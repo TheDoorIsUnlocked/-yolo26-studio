@@ -180,23 +180,40 @@ def collect_val_results(metrics: Any, meta: dict[str, Any]) -> dict[str, Any]:
     }
 
     per_class: list[dict[str, Any]] = []
-    ap_idx = getattr(box, "ap_class_index", []) or []
+    # 注意：真实 ultralytics 的 box.p / box.r / box.ap* / box.ap_class_index 都是 numpy 数组，
+    # 不能用 `or []` 这种写法（会触发 "truth value of an array is ambiguous" 异常）。
+    ap_idx_raw = getattr(box, "ap_class_index", None)
+    ap_idx = list(ap_idx_raw) if ap_idx_raw is not None else []
     nt_img = getattr(metrics, "nt_per_image", None)
     nt_cls = getattr(metrics, "nt_per_class", None)
-    p_arr = getattr(box, "p", []) or []
-    r_arr = getattr(box, "r", []) or []
-    ap50_arr = getattr(box, "ap50", []) or []
-    ap_arr = getattr(box, "ap", []) or []
+    p_arr = getattr(box, "p", None)
+    r_arr = getattr(box, "r", None)
+    ap50_arr = getattr(box, "ap50", None)
+    ap_arr = getattr(box, "ap", None)
+
+    def _safe_at(arr, i, default=0.0):
+        if arr is None or i >= len(arr):
+            return default
+        try:
+            return float(arr[i])
+        except Exception:
+            return default
+
     for i, c in enumerate(ap_idx):
+        try:
+            c_key = int(c)
+        except Exception:
+            c_key = c
+        c_is_int = isinstance(c_key, int)
         per_class.append(
             {
-                "class": names.get(c, str(c)) if isinstance(c, int) else str(c),
-                "images": int(nt_img[c]) if nt_img is not None else None,
-                "instances": int(nt_cls[c]) if nt_cls is not None else None,
-                "precision": float(p_arr[i]) if i < len(p_arr) else 0.0,
-                "recall": float(r_arr[i]) if i < len(r_arr) else 0.0,
-                "map50": float(ap50_arr[i]) if i < len(ap50_arr) else 0.0,
-                "map": float(ap_arr[i]) if i < len(ap_arr) else 0.0,
+                "class": names.get(c_key, str(c)) if c_is_int else str(c),
+                "images": int(nt_img[c_key]) if (nt_img is not None and c_is_int) else None,
+                "instances": int(nt_cls[c_key]) if (nt_cls is not None and c_is_int) else None,
+                "precision": _safe_at(p_arr, i),
+                "recall": _safe_at(r_arr, i),
+                "map50": _safe_at(ap50_arr, i),
+                "map": _safe_at(ap_arr, i),
             }
         )
 
