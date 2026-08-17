@@ -1,0 +1,9 @@
+path: "3631"
+train: images/train
+val: images/val
+test:
+
+#Classes
+names:
+  0: 3631
+  1: 3631NG

@@ -206,3 +206,10 @@ calibration_*.npy
 # Training logs
 args.yaml
 results.csv
+
+# Local agent / tool directories (not project source)
+.workbuddy/
+.trae/
+
+# Training dataset (images + labels, large; regenerate from source)
+/3631/

@@ -1,0 +1,9 @@
+path: icon
+train: images/train
+val: images/val
+test:
+
+#Classes
+names:
+  0: overwatch
+  1: recyle_bin
