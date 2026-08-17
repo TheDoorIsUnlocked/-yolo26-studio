@@ -8,10 +8,11 @@ import cv2
 # Add project root to sys.path (works on Windows & Linux)
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QPushButton, QLabel, QFrame, QDockWidget, QComboBox, 
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                             QPushButton, QLabel, QFrame, QDockWidget, QComboBox,
                              QSlider, QGroupBox, QListWidget, QTextEdit, QTabWidget,
-                             QFileDialog, QProgressBar, QSplitter, QScrollArea, QCheckBox, QSpinBox, QButtonGroup, QRadioButton, QToolButton, QSizePolicy)
+                             QFileDialog, QProgressBar, QSplitter, QScrollArea, QCheckBox, QSpinBox, QButtonGroup, QRadioButton, QToolButton, QSizePolicy,
+                             QTableWidget, QTableWidgetItem, QHeaderView)
 from PyQt6.QtCore import Qt, QSize, pyqtSlot, QUrl, QTimer, QRect, QPoint, pyqtSignal
 from PyQt6.QtGui import QPixmap, QImage, QIcon, QAction, QShortcut, QKeySequence, QPainter, QFont, QColor, QWheelEvent
 from PyQt6.QtMultimedia import QMediaDevices
@@ -22,6 +23,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from styles import Theme
 from workers import VideoThread, ImageWorker, TrainWorker, VideoFileWorker, ExportWorker, ValWorker, BenchmarkWorker
 from config import Config
+from val_report import build_markdown, build_json
 
 def emoji_to_pixmap(emoji, size=48):
     """Render an emoji to a QPixmap."""
@@ -214,6 +216,7 @@ class MainWindow(QMainWindow):
         self.export_worker = None
         self.val_worker = None
         self.benchmark_worker = None
+        self.last_val_results = None
         self.current_device = 'cpu'
         
         # Apply Theme
@@ -721,10 +724,13 @@ class MainWindow(QMainWindow):
 
     def create_val_tab(self):
         tab = QWidget()
-        layout = QVBoxLayout(tab)
-        
-        form_layout = QVBoxLayout()
-        
+        outer = QVBoxLayout(tab)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        form_layout = QVBoxLayout(content)
+
         # Model Path
         model_layout = QHBoxLayout()
         self.lbl_val_model = QLabel(Config.get("model_path"))
@@ -736,7 +742,7 @@ class MainWindow(QMainWindow):
         model_layout.addWidget(self.val_model_edit)
         model_layout.addWidget(btn_browse_model)
         form_layout.addLayout(model_layout)
-        
+
         # Data Path
         data_layout = QHBoxLayout()
         self.lbl_val_data = QLabel(Config.get("data_path"))
@@ -747,28 +753,67 @@ class MainWindow(QMainWindow):
         data_layout.addWidget(self.val_data_edit)
         data_layout.addWidget(btn_browse_data)
         form_layout.addLayout(data_layout)
-        
+
         # Params
         self.spin_val_batch = QSpinBox()
         self.spin_val_batch.setRange(1, 512)
         self.spin_val_batch.setValue(16)
         form_layout.addWidget(QLabel(Config.get("batch")))
         form_layout.addWidget(self.spin_val_batch)
-        
+
         self.spin_val_imgsz = QSpinBox()
         self.spin_val_imgsz.setRange(32, 1280)
         self.spin_val_imgsz.setValue(640)
         form_layout.addWidget(QLabel(Config.get("imgsz")))
         form_layout.addWidget(self.spin_val_imgsz)
-        
+
         # Start
         self.btn_val = QPushButton(Config.get("start_val"))
         self.btn_val.setProperty("class", "ActionButton")
         self.btn_val.clicked.connect(self.start_validation)
         form_layout.addWidget(self.btn_val)
-        
-        layout.addLayout(form_layout)
-        layout.addStretch()
+
+        # ---- 验证结果展示 ----
+        self.lbl_val_results = QLabel(Config.get("val_results"))
+        self.lbl_val_results.setStyleSheet("font-weight: bold; font-size: 14px; margin-top: 12px;")
+        form_layout.addWidget(self.lbl_val_results)
+
+        self.val_results_table = QTableWidget()
+        self.val_results_table.setColumnCount(3)
+        self.val_results_table.setHorizontalHeaderLabels(["指标", "数值", "评价"])
+        self.val_results_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        form_layout.addWidget(self.val_results_table)
+
+        self.lbl_val_perclass = QLabel(Config.get("per_class"))
+        self.lbl_val_perclass.setStyleSheet("font-weight: bold; margin-top: 8px;")
+        form_layout.addWidget(self.lbl_val_perclass)
+
+        self.val_perclass_table = QTableWidget()
+        self.val_perclass_table.setColumnCount(7)
+        self.val_perclass_table.setHorizontalHeaderLabels(
+            ["类别", "图像数", "实例数", "P", "R", "mAP50", "mAP50-95"]
+        )
+        self.val_perclass_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        form_layout.addWidget(self.val_perclass_table)
+
+        self.lbl_val_eval = QLabel(Config.get("evaluation"))
+        self.lbl_val_eval.setStyleSheet("font-weight: bold; margin-top: 8px;")
+        form_layout.addWidget(self.lbl_val_eval)
+
+        self.val_eval_text = QTextEdit()
+        self.val_eval_text.setReadOnly(True)
+        self.val_eval_text.setMinimumHeight(170)
+        form_layout.addWidget(self.val_eval_text)
+
+        self.btn_export_val = QPushButton(Config.get("export_report"))
+        self.btn_export_val.setProperty("class", "ActionButton")
+        self.btn_export_val.setEnabled(False)
+        self.btn_export_val.clicked.connect(self.export_val_report)
+        form_layout.addWidget(self.btn_export_val)
+
+        form_layout.addStretch()
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
         return tab
 
     def create_export_tab(self):
@@ -1429,8 +1474,104 @@ class MainWindow(QMainWindow):
         
         self.val_worker = ValWorker(model_path, data, batch, imgsz, device)
         self.val_worker.log_signal.connect(self.log)
+        self.val_worker.results_signal.connect(self.on_val_results)
         self.val_worker.finished_signal.connect(lambda: self.btn_val.setEnabled(True))
         self.val_worker.start()
+
+    def on_val_results(self, results):
+        """接收 ValWorker 的结构化验证结果，填充界面并启用导出。"""
+        self.last_val_results = results
+        scalar = results.get("scalar", {})
+        ev = results.get("evaluation", {})
+        grades = ev.get("metrics", {})
+
+        # 总体指标表
+        rows = [
+            ("精确率 Precision", scalar.get("precision"), "精确率 (Precision)"),
+            ("召回率 Recall", scalar.get("recall"), "召回率 (Recall)"),
+            ("F1 分数", scalar.get("f1"), None),
+            ("mAP@0.5", scalar.get("map50"), "mAP@0.5"),
+            ("mAP@0.5:0.95", scalar.get("map"), "mAP@0.5:0.95"),
+            ("mAP@0.75", scalar.get("map75"), None),
+            ("综合适应度 Fitness", scalar.get("fitness"), None),
+        ]
+        self.val_results_table.setRowCount(len(rows))
+        for i, (name, val, key) in enumerate(rows):
+            self.val_results_table.setItem(i, 0, QTableWidgetItem(name))
+            self.val_results_table.setItem(
+                i, 1, QTableWidgetItem(f"{val:.4f}" if isinstance(val, (int, float)) else "N/A")
+            )
+            grade = grades.get(key, {}).get("grade", "") if key else ""
+            self.val_results_table.setItem(i, 2, QTableWidgetItem(grade))
+
+        # 逐类结果表
+        def _cell(v):
+            if isinstance(v, float):
+                return f"{v:.4f}"
+            if v is None:
+                return "N/A"
+            return str(v)
+
+        pc = results.get("per_class", [])
+        self.val_perclass_table.setRowCount(len(pc))
+        for i, row in enumerate(pc):
+            vals = [
+                str(row.get("class")),
+                _cell(row.get("images")),
+                _cell(row.get("instances")),
+                _cell(row.get("precision")),
+                _cell(row.get("recall")),
+                _cell(row.get("map50")),
+                _cell(row.get("map")),
+            ]
+            for j, v in enumerate(vals):
+                self.val_perclass_table.setItem(i, j, QTableWidgetItem(v))
+
+        # 综合评价文本
+        self.val_eval_text.setPlainText(self._format_evaluation(results))
+        self.btn_export_val.setEnabled(True)
+        self.log("验证结果已显示，可点击“导出验证报告”。")
+
+    def _format_evaluation(self, results):
+        scalar = results.get("scalar", {})
+        ev = results.get("evaluation", {})
+        grades = ev.get("metrics", {})
+        lines = []
+        lines.append(f"综合评价：{ev.get('overall_grade', '-')}（mAP@0.5:0.95 = {scalar.get('map', 0):.4f}）")
+        lines.append("")
+        lines.append("逐指标评价：")
+        for name, g in grades.items():
+            lines.append(f"  - {name}：{g.get('grade', '-')}（{g.get('value', 0):.4f}）")
+        lines.append("")
+        lines.append("改进建议：")
+        for i, s in enumerate(ev.get("suggestions", []), 1):
+            lines.append(f"  {i}. {s}")
+        return "\n".join(lines)
+
+    def export_val_report(self):
+        """将验证结果导出为 Markdown 报告或 JSON 数据。"""
+        if not self.last_val_results:
+            self.log("暂无验证结果可供导出，请先执行验证。")
+            return
+        meta = self.last_val_results.get("meta", {})
+        save_dir = meta.get("save_dir") or os.getcwd()
+        default_path = os.path.join(save_dir, "val_report")
+        file_name, _ = QFileDialog.getSaveFileName(
+            self, "导出验证报告", default_path,
+            "Markdown 报告 (*.md);;JSON 数据 (*.json)",
+        )
+        if not file_name:
+            return
+        try:
+            if file_name.lower().endswith(".json"):
+                content = build_json(self.last_val_results)
+            else:
+                content = build_markdown(self.last_val_results)
+            with open(file_name, "w", encoding="utf-8") as f:
+                f.write(content)
+            self.log(f"验证报告已导出：{file_name}")
+        except Exception as e:
+            self.log(f"导出失败：{e}")
 
     # Benchmark Logic
     def browse_bench_model(self):

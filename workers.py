@@ -11,6 +11,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from PyQt6.QtCore import QThread, pyqtSignal, Qt
 from PyQt6.QtGui import QImage
 from ultralytics import YOLO
+import ultralytics as ultralytics_pkg
+from val_report import collect_val_results
 import mss
 
 # --- Hikvision SDK Imports ---
@@ -694,6 +696,7 @@ class TrainWorker(QThread):
 class ValWorker(QThread):
     log_signal = pyqtSignal(str)
     finished_signal = pyqtSignal()
+    results_signal = pyqtSignal(dict)
     
     def __init__(self, model_path, data_yaml, batch, imgsz, device):
         super().__init__()
@@ -707,19 +710,51 @@ class ValWorker(QThread):
         try:
             self.log_signal.emit(f"Starting validation with model: {self.model_path}")
             model = YOLO(self.model_path)
-            
+
             metrics = model.val(
                 data=self.data_yaml,
                 batch=self.batch,
                 imgsz=self.imgsz,
                 device=self.device
             )
-            
+
             self.log_signal.emit("Validation completed successfully!")
             self.log_signal.emit(f"mAP50: {metrics.box.map50:.4f}")
             self.log_signal.emit(f"mAP50-95: {metrics.box.map:.4f}")
             self.log_signal.emit(f"Results saved to {metrics.save_dir}")
-            
+
+            # 整理结构化验证结果（含总体指标、逐类指标、耗时、混淆矩阵与自动评价）
+            try:
+                import torch
+
+                cuda_device = (
+                    torch.cuda.get_device_name(0)
+                    if (self.device != "cpu" and torch.cuda.is_available())
+                    else ("CPU" if self.device == "cpu" else str(self.device))
+                )
+                torch_version = torch.__version__
+            except Exception:
+                cuda_device = str(self.device)
+                torch_version = "unknown"
+
+            meta = {
+                "model_path": self.model_path,
+                "data_yaml": self.data_yaml,
+                "batch": self.batch,
+                "imgsz": self.imgsz,
+                "device": self.device,
+                "task": getattr(model, "task", "detect"),
+                "nc": len(getattr(model, "names", {}) or {}),
+                "names": getattr(model, "names", {}) or {},
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "ultralytics_version": getattr(ultralytics_pkg, "__version__", "unknown"),
+                "torch_version": torch_version,
+                "cuda_device": cuda_device,
+            }
+            results = collect_val_results(metrics, meta)
+            self.results_signal.emit(results)
+            self.log_signal.emit("Validation results collected for display/export.")
+
         except Exception as e:
             self.log_signal.emit(f"Validation failed: {e}")
         finally:
