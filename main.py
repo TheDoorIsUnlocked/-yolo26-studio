@@ -1481,56 +1481,61 @@ class MainWindow(QMainWindow):
     def on_val_results(self, results):
         """接收 ValWorker 的结构化验证结果，填充界面并启用导出。"""
         self.last_val_results = results
-        scalar = results.get("scalar", {})
-        ev = results.get("evaluation", {})
-        grades = ev.get("metrics", {})
+        try:
+            scalar = results.get("scalar", {})
+            ev = results.get("evaluation", {})
+            grades = ev.get("metrics", {})
 
-        # 总体指标表
-        rows = [
-            ("精确率 Precision", scalar.get("precision"), "精确率 (Precision)"),
-            ("召回率 Recall", scalar.get("recall"), "召回率 (Recall)"),
-            ("F1 分数", scalar.get("f1"), None),
-            ("mAP@0.5", scalar.get("map50"), "mAP@0.5"),
-            ("mAP@0.5:0.95", scalar.get("map"), "mAP@0.5:0.95"),
-            ("mAP@0.75", scalar.get("map75"), None),
-            ("综合适应度 Fitness", scalar.get("fitness"), None),
-        ]
-        self.val_results_table.setRowCount(len(rows))
-        for i, (name, val, key) in enumerate(rows):
-            self.val_results_table.setItem(i, 0, QTableWidgetItem(name))
-            self.val_results_table.setItem(
-                i, 1, QTableWidgetItem(f"{val:.4f}" if isinstance(val, (int, float)) else "N/A")
-            )
-            grade = grades.get(key, {}).get("grade", "") if key else ""
-            self.val_results_table.setItem(i, 2, QTableWidgetItem(grade))
-
-        # 逐类结果表
-        def _cell(v):
-            if isinstance(v, float):
-                return f"{v:.4f}"
-            if v is None:
-                return "N/A"
-            return str(v)
-
-        pc = results.get("per_class", [])
-        self.val_perclass_table.setRowCount(len(pc))
-        for i, row in enumerate(pc):
-            vals = [
-                str(row.get("class")),
-                _cell(row.get("images")),
-                _cell(row.get("instances")),
-                _cell(row.get("precision")),
-                _cell(row.get("recall")),
-                _cell(row.get("map50")),
-                _cell(row.get("map")),
+            # 总体指标表
+            rows = [
+                ("精确率 Precision", scalar.get("precision"), "精确率 (Precision)"),
+                ("召回率 Recall", scalar.get("recall"), "召回率 (Recall)"),
+                ("F1 分数", scalar.get("f1"), None),
+                ("mAP@0.5", scalar.get("map50"), "mAP@0.5"),
+                ("mAP@0.5:0.95", scalar.get("map"), "mAP@0.5:0.95"),
+                ("mAP@0.75", scalar.get("map75"), None),
+                ("综合适应度 Fitness", scalar.get("fitness"), None),
             ]
-            for j, v in enumerate(vals):
-                self.val_perclass_table.setItem(i, j, QTableWidgetItem(v))
+            self.val_results_table.setRowCount(len(rows))
+            for i, (name, val, key) in enumerate(rows):
+                self.val_results_table.setItem(i, 0, QTableWidgetItem(name))
+                self.val_results_table.setItem(
+                    i, 1, QTableWidgetItem(f"{val:.4f}" if isinstance(val, (int, float)) else "N/A")
+                )
+                grade = grades.get(key, {}).get("grade", "") if key else ""
+                self.val_results_table.setItem(i, 2, QTableWidgetItem(grade))
 
-        # 综合评价文本
-        self.val_eval_text.setPlainText(self._format_evaluation(results))
-        self.btn_export_val.setEnabled(True)
-        self.log("验证结果已显示，可点击“导出验证报告”。")
+            # 逐类结果表
+            def _cell(v):
+                if isinstance(v, float):
+                    return f"{v:.4f}"
+                if v is None:
+                    return "N/A"
+                return str(v)
+
+            pc = results.get("per_class", [])
+            self.val_perclass_table.setRowCount(len(pc))
+            for i, row in enumerate(pc):
+                vals = [
+                    str(row.get("class")),
+                    _cell(row.get("images")),
+                    _cell(row.get("instances")),
+                    _cell(row.get("precision")),
+                    _cell(row.get("recall")),
+                    _cell(row.get("map50")),
+                    _cell(row.get("map")),
+                ]
+                for j, v in enumerate(vals):
+                    self.val_perclass_table.setItem(i, j, QTableWidgetItem(v))
+
+            # 综合评价文本
+            self.val_eval_text.setPlainText(self._format_evaluation(results))
+            self.log("验证结果已显示，可点击“导出验证报告”。")
+        except Exception as e:
+            self.log(f"填充验证结果界面时出错：{e}")
+        finally:
+            # 无论展示是否成功，都保证导出按钮可用，避免“点击没反应”
+            self.btn_export_val.setEnabled(True)
 
     def _format_evaluation(self, results):
         scalar = results.get("scalar", {})
