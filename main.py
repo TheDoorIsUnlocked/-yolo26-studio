@@ -209,6 +209,7 @@ class MainWindow(QMainWindow):
         
         # State
         self.current_model = "yolo26n.pt"
+        self.det_model_path = None
         self.thread = None
         self.image_worker = None
         self.train_worker = None
@@ -374,12 +375,22 @@ class MainWindow(QMainWindow):
         self.refresh_btn = QPushButton(Config.get("refresh_models"))
         self.refresh_btn.setProperty("class", "SecondaryButton")
         self.refresh_btn.clicked.connect(self.refresh_models)
-        
+
+        # 检测模型(深度测距用)：仅当主模型为深度模型时启用
+        det_label = QLabel("检测模型 (深度测距)")
+        self.det_model_combo = QComboBox()
+        self.det_model_combo.setEnabled(False)
+        self.det_model_combo.currentTextChanged.connect(self.change_det_model)
+
         self.refresh_models()
         self.model_combo.currentTextChanged.connect(self.change_model)
+        self._sync_det_model()
 
         model_layout.addWidget(self.model_combo)
         model_layout.addWidget(self.refresh_btn)
+        model_layout.addWidget(det_label)
+        model_layout.addWidget(self.det_model_combo)
+
         self.model_group.setLayout(model_layout)
 
         # Device Selector
@@ -957,6 +968,13 @@ class MainWindow(QMainWindow):
         current_combo = self.model_combo.currentText()
         self.model_combo.clear()
         self.model_combo.addItems(model_names)
+
+        # 同步检测模型下拉框
+        current_det = self.det_model_combo.currentText()
+        self.det_model_combo.clear()
+        self.det_model_combo.addItems(model_names)
+        if current_det in model_names:
+            self.det_model_combo.setCurrentText(current_det)
         
         # Priority:
         # 1. Previously selected item in combobox (if refreshing manually)
@@ -992,9 +1010,40 @@ class MainWindow(QMainWindow):
             self.current_model = model_name
             
         self.log(f"Model changed to {self.current_model}")
+        self._sync_det_model()
         if self.thread and self.thread.isRunning():
             self.thread.stop()
             self.toggle_camera() # Restart with new model if running
+
+    def _sync_det_model(self):
+        """维护检测模型下拉框：仅深度模型时启用，并自动建议同名检测模型。"""
+        is_depth = 'depth' in os.path.basename(self.current_model).lower()
+        self.det_model_combo.setEnabled(is_depth)
+        if not is_depth:
+            return
+        base = os.path.basename(self.current_model).split('-depth')[0]
+        cand = base + '.pt'
+        names = [self.det_model_combo.itemText(i) for i in range(self.det_model_combo.count())]
+        if cand in names and self.det_model_combo.currentText() != cand:
+            self.det_model_combo.setCurrentText(cand)
+        elif self.det_model_combo.currentText() == "" and names:
+            self.det_model_combo.setCurrentIndex(0)
+
+    def change_det_model(self, model_name):
+        if not model_name:
+            self.det_model_path = None
+            return
+        if os.path.exists(os.path.join("weights", model_name)):
+            self.det_model_path = os.path.join("weights", model_name)
+        else:
+            self.det_model_path = model_name
+        self.log(f"Detection model set to {self.det_model_path}")
+
+    def _active_det_model(self):
+        """仅当主模型为深度模型时返回检测模型路径，否则 None。"""
+        if 'depth' not in os.path.basename(self.current_model).lower():
+            return None
+        return getattr(self, 'det_model_path', None)
 
     def change_device(self):
         if self.radio_cpu.isChecked():
@@ -1151,7 +1200,7 @@ class MainWindow(QMainWindow):
             tracker = self.tracker_combo.currentText()
             if tracker == "None": tracker = None
             
-            self.thread = VideoThread(self.current_model, source=source, device=self.current_device, tracker=tracker)
+            self.thread = VideoThread(self.current_model, source=source, device=self.current_device, tracker=tracker, det_model_path=self._active_det_model())
             self.thread.change_pixmap_signal.connect(self.update_video_image)
             self.thread.stats_signal.connect(self.update_stats)
             self.thread.error_signal.connect(self.handle_worker_error) # Connect error signal
@@ -1191,6 +1240,12 @@ class MainWindow(QMainWindow):
             for name, count in stats['details'].items():
                 self.result_list.addItem(f"{name}: {count}")
 
+        # Add depth distance stats
+        if stats.get('depth'):
+            d = stats['depth']
+            self.result_list.addItem(f"Center: {d['center']:.2f}m | Mean: {d['mean']:.2f}m")
+            self.result_list.addItem(f"Range: {d['min']:.2f}m - {d['max']:.2f}m")
+
     @pyqtSlot(QImage, dict)
     def update_image_result(self, qt_img, stats):
         self.image_label.setPixmap(QPixmap.fromImage(qt_img))
@@ -1202,6 +1257,10 @@ class MainWindow(QMainWindow):
         self.result_list.addItem(f"Total Objects: {stats['objects']}")
         for name, count in stats['details'].items():
             self.result_list.addItem(f"{name}: {count}")
+        if stats.get('depth'):
+            d = stats['depth']
+            self.result_list.addItem(f"Center: {d['center']:.2f}m | Mean: {d['mean']:.2f}m")
+            self.result_list.addItem(f"Range: {d['min']:.2f}m - {d['max']:.2f}m")
 
     @pyqtSlot(QImage)
     def update_video_file_image(self, qt_img):
@@ -1277,7 +1336,7 @@ class MainWindow(QMainWindow):
             self.tabs.setCurrentIndex(1) # Switch to Image Tab
             self.nav_buttons[1].setChecked(True)
             self.log(f"Processing image: {file_name}")
-            self.image_worker = ImageWorker(self.current_model, file_name, self.chk_auto_save_img.isChecked(), device=self.current_device)
+            self.image_worker = ImageWorker(self.current_model, file_name, self.chk_auto_save_img.isChecked(), device=self.current_device, det_model_path=self._active_det_model())
             self.image_worker.result_signal.connect(self.update_static_image)
             self.image_worker.error_signal.connect(self.handle_worker_error) # Connect error signal
             self.image_worker.conf = self.conf_slider.value() / 100.0
@@ -1296,6 +1355,12 @@ class MainWindow(QMainWindow):
         if 'details' in stats:
             for name, count in stats['details'].items():
                 self.result_list.addItem(f"{name}: {count}")
+        
+        # Add depth distance stats
+        if stats.get('depth'):
+            d = stats['depth']
+            self.result_list.addItem(f"Center: {d['center']:.2f}m | Mean: {d['mean']:.2f}m")
+            self.result_list.addItem(f"Range: {d['min']:.2f}m - {d['max']:.2f}m")
         
         self.log("Image processing complete.")
 
@@ -1338,7 +1403,7 @@ class MainWindow(QMainWindow):
         tracker = self.video_tracker_combo.currentText()
         if tracker == "None": tracker = None
         
-        self.video_file_worker = VideoFileWorker(self.current_model, self.current_video_path, device=self.current_device, save_video=self.chk_save_video_file.isChecked(), tracker=tracker)
+        self.video_file_worker = VideoFileWorker(self.current_model, self.current_video_path, device=self.current_device, save_video=self.chk_save_video_file.isChecked(), tracker=tracker, det_model_path=self._active_det_model())
         self.video_file_worker.progress_signal.connect(self.video_progress.setValue)
         self.video_file_worker.frame_signal.connect(self.update_video_file_image)
         self.video_file_worker.stats_signal.connect(self.update_stats)

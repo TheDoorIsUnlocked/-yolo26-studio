@@ -66,19 +66,128 @@ except Exception as e:
     MV_CC_Initialize = None
     MV_CC_Finalize = None
     
+def depth_stats(r):
+    """提取深度结果的全局距离统计(单位:米)。无有效深度时返回 None。
+
+    Args:
+        r: 单个 ultralytics Results 对象。
+    Returns:
+        dict 含 mean/min/max/center，或 None。
+    """
+    if getattr(r, "depth", None) is None:
+        return None
+    d = r.depth.data
+    if hasattr(d, "cpu"):
+        d = d.detach().cpu().float().numpy()
+    else:
+        d = np.asarray(d, dtype=np.float32)
+    d = np.nan_to_num(d, nan=0.0, posinf=0.0, neginf=0.0)
+    valid = d > 0  # 深度>0 视为有效像素
+    if not valid.any():
+        return None
+    vals = d[valid]
+    mean = float(vals.mean())
+    nearest = float(vals.min())
+    farthest = float(vals.max())
+    h, w = d.shape
+    center = float(d[h // 2, w // 2])
+    if not center > 0:
+        center = mean
+    return {"mean": mean, "min": nearest, "max": farthest, "center": center}
+
+
+def annotate_depth(frame, stats):
+    """在深度热力图上叠加距离标注(BGR 图)。stats 为 None 时原样返回。"""
+    if stats is None or frame is None:
+        return frame
+    color = (0, 255, 255)          # BGR 黄色
+    cv2.putText(frame, f"Center: {stats['center']:.2f} m", (12, 32),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2, cv2.LINE_AA)
+    cv2.putText(frame, f"Mean: {stats['mean']:.2f} m | Near: {stats['min']:.2f} m | Far: {stats['max']:.2f} m",
+                (12, 66), cv2.FONT_HERSHEY_SIMPLEX, 0.65, color, 2, cv2.LINE_AA)
+    # 图像中心十字标记
+    h, w = frame.shape[:2]
+    cv2.drawMarker(frame, (w // 2, h // 2), (0, 0, 255), cv2.MARKER_CROSS, 26, 2)
+    return frame
+
+
+# 检测框颜色轮换(BGR)
+_CLASS_COLORS = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255), (255, 0, 255),
+                 (0, 165, 255), (255, 255, 0), (203, 192, 255), (0, 255, 127), (255, 191, 0)]
+
+
+def annotate_object_distances(frame, det, depth_arr, depth_info):
+    """在深度热力图(frame)上叠加目标检测框，并标注每个物体的距离(米)。
+
+    Args:
+        frame: 深度热力图(BGR, 原图尺寸)。
+        det: 目标检测单帧 Results(含 boxes 与 names)。
+        depth_arr: 深度图 numpy (H, W, 米)，与 frame 同尺寸。
+        depth_info: 全局深度统计(用于无检测时回退)。
+    """
+    # 无检测能力或无目标时回退到全局距离标注
+    if det is None or getattr(det, "boxes", None) is None or not len(det.boxes):
+        return annotate_depth(frame, depth_info)
+    names = det.names
+    h, w = depth_arr.shape[:2]
+    for box in det.boxes:
+        cls = int(box.cls[0])
+        x1, y1, x2, y2 = [int(v) for v in box.xyxy[0]]
+        # 目标距离 = 框中心像素深度，无效则取框内有效深度均值
+        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+        dist = float(depth_arr[cy, cx]) if (0 <= cy < h and 0 <= cx < w) else 0.0
+        if not dist > 0:
+            region = depth_arr[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
+            vals = region[region > 0]
+            dist = float(vals.mean()) if len(vals) else 0.0
+        label = f"{names[cls]} {dist:.2f}m" if dist > 0 else f"{names[cls]} n/a"
+        color = _CLASS_COLORS[cls % len(_CLASS_COLORS)]
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        # 标签底框保证可读
+        (tw, th), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+        ty = y1 - 8 if y1 - 8 >= th else y1 + th + 4
+        cv2.rectangle(frame, (x1, ty - th), (x1 + tw, ty + baseline), (0, 0, 0), -1)
+        cv2.putText(frame, label, (x1, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
+    return frame
+
+
+def build_annotated_frame(r, det_model=None, det_input=None, conf=0.25, iou=0.45, device="cpu"):
+    """根据单个推理结果生成标注帧，并返回深度统计。
+
+    当结果含深度且提供了检测模型时，会叠加"类别+距离"目标框；
+    否则对深度结果叠加全局距离标注(中心/均值)，对普通任务走默认 plot。
+    返回 (annotated_frame, depth_info)。
+    """
+    annotated = r.plot()
+    depth_info = None
+    if getattr(r, "depth", None) is not None:
+        depth_info = depth_stats(r)
+        if det_model is not None and det_input is not None:
+            det = det_model(det_input, conf=conf, iou=iou, device=device, verbose=False)[0]
+            depth_arr = r.depth.data
+            if hasattr(depth_arr, "cpu"):
+                depth_arr = depth_arr.detach().cpu().float().numpy()
+            annotated = annotate_object_distances(annotated, det, depth_arr, depth_info)
+        else:
+            annotated = annotate_depth(annotated, depth_info)
+    return annotated, depth_info
+
+
 class VideoThread(QThread):
     change_pixmap_signal = pyqtSignal(QImage)
     stats_signal = pyqtSignal(dict)
     error_signal = pyqtSignal(str) # New signal for errors
     
-    def __init__(self, model_path='yolo26n.pt', source=0, device='cpu', tracker=None):
+    def __init__(self, model_path='yolo26n.pt', source=0, device='cpu', tracker=None, det_model_path=None):
         super().__init__()
         self.model_path = model_path
+        self.det_model_path = det_model_path
         self.source = source
         self.device = device
         self.tracker = tracker
         self.is_running = True
         self.model = None
+        self.det_model = None
         self.conf = 0.25
         self.iou = 0.45
         self.save_video = False
@@ -101,6 +210,8 @@ class VideoThread(QThread):
             if not os.path.exists(self.model_path) and not self.model_path.endswith('.pt'):
                  pass
             self.model = YOLO(self.model_path)
+            if self.det_model_path:
+                self.det_model = YOLO(self.det_model_path)
         except Exception as e:
             err_msg = f"Error loading model: {e}"
             print(err_msg)
@@ -344,8 +455,9 @@ class VideoThread(QThread):
                     results = self.model(frame, conf=self.conf, iou=self.iou, device=self.device, verbose=False)
                 
                 # Get annotated frame
-                annotated_frame = results[0].plot()
-                
+                annotated_frame, depth_info = build_annotated_frame(
+                    results[0], self.det_model, frame, self.conf, self.iou, self.device)
+
                 # Save frame if recording
                 if self.video_writer:
                     self.video_writer.write(annotated_frame)
@@ -387,7 +499,8 @@ class VideoThread(QThread):
                     'fps': fps,
                     'inference_ms': inference_time,
                     'objects': total_objects,
-                    'details': obj_stats
+                    'details': obj_stats,
+                    'depth': depth_info,
                 }
                 self.stats_signal.emit(stats)
             except Exception as e:
@@ -434,9 +547,10 @@ class ImageWorker(QThread):
     result_signal = pyqtSignal(QImage, dict)
     error_signal = pyqtSignal(str) # New signal
     
-    def __init__(self, model_path='yolo26n.pt', image_path=None, auto_save=False, device='cpu'):
+    def __init__(self, model_path='yolo26n.pt', image_path=None, auto_save=False, device='cpu', det_model_path=None):
         super().__init__()
         self.model_path = model_path
+        self.det_model_path = det_model_path
         self.image_path = image_path
         self.device = device
         self.conf = 0.25
@@ -452,10 +566,12 @@ class ImageWorker(QThread):
         try:
             print(f"Processing image {self.image_path}...")
             model = YOLO(self.model_path)
+            det_model = YOLO(self.det_model_path) if self.det_model_path else None
             results = model(self.image_path, conf=self.conf, iou=self.iou, device=self.device)
-            
-            self.annotated_frame = results[0].plot()
-            
+
+            self.annotated_frame, depth_info = build_annotated_frame(
+                results[0], det_model, self.image_path, self.conf, self.iou, self.device)
+
             # Auto Save
             if self.auto_save:
                 self.save_result()
@@ -485,7 +601,8 @@ class ImageWorker(QThread):
             stats = {
                 'objects': total_objects,
                 'inference_ms': results[0].speed.get('inference', 0.0),
-                'details': obj_stats
+                'details': obj_stats,
+                'depth': depth_info,
             }
             
             self.result_signal.emit(qt_image, stats)
@@ -514,9 +631,10 @@ class VideoFileWorker(QThread):
     finished_signal = pyqtSignal(str)
     error_signal = pyqtSignal(str) # New signal
     
-    def __init__(self, model_path, video_path, device='cpu', save_video=False, tracker=None):
+    def __init__(self, model_path, video_path, device='cpu', save_video=False, tracker=None, det_model_path=None):
         super().__init__()
         self.model_path = model_path
+        self.det_model_path = det_model_path
         self.video_path = video_path
         self.device = device
         self.tracker = tracker
@@ -529,6 +647,7 @@ class VideoFileWorker(QThread):
         print(f"Starting video processing: {self.video_path}, save={self.save_video}")
         try:
             model = YOLO(self.model_path)
+            det_model = YOLO(self.det_model_path) if self.det_model_path else None
             # stream=True is a generator
             if self.tracker:
                 results = model.track(self.video_path, save=self.save_video, conf=self.conf, iou=self.iou, device=self.device, tracker=self.tracker, stream=True, persist=True)
@@ -556,7 +675,8 @@ class VideoFileWorker(QThread):
                     self.progress_signal.emit(progress)
                 
                 # Emit Frame
-                annotated_frame = r.plot()
+                annotated_frame, depth_info = build_annotated_frame(
+                    r, det_model, getattr(r, "orig_img", None), self.conf, self.iou, self.device)
                 if annotated_frame is not None:
                     rgb_image = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                     h, w, ch = rgb_image.shape
@@ -582,7 +702,8 @@ class VideoFileWorker(QThread):
                     'fps': fps,
                     'inference_ms': inference_time,
                     'objects': total_objects,
-                    'details': obj_stats
+                    'details': obj_stats,
+                    'depth': depth_info,
                 }
                 self.stats_signal.emit(stats)
             
