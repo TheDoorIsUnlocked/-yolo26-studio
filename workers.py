@@ -569,6 +569,12 @@ class ImageWorker(QThread):
             det_model = YOLO(self.det_model_path) if self.det_model_path else None
             results = model(self.image_path, conf=self.conf, iou=self.iou, device=self.device)
 
+            # 诊断：打印 GUI 实际加载的类别名，用于排查标签是否颠倒
+            import ultralytics as _ul
+            print(f"[DIAG] model_path={self.model_path}")
+            print(f"[DIAG] ultralytics={_ul.__version__} names={model.names}")
+            print(f"[DIAG] det_model_path={self.det_model_path}")
+
             self.annotated_frame, depth_info = build_annotated_frame(
                 results[0], det_model, self.image_path, self.conf, self.iou, self.device)
 
@@ -582,14 +588,17 @@ class ImageWorker(QThread):
             bytes_per_line = ch * w
             qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888).copy()
             
-            # Detailed object stats
+            # Detailed object stats (数量 + 每类最高置信度)
             obj_stats = {}
+            obj_conf = {}
             total_objects = 0
             if hasattr(results[0], 'boxes') and results[0].boxes is not None:
                 for box in results[0].boxes:
                     cls_id = int(box.cls[0])
+                    conf = float(box.conf[0])
                     name = results[0].names[cls_id]
                     obj_stats[name] = obj_stats.get(name, 0) + 1
+                    obj_conf[name] = max(obj_conf.get(name, 0.0), conf)
                     total_objects += 1
             elif hasattr(results[0], 'keypoints') and results[0].keypoints is not None:
                 total_objects = len(results[0].keypoints)
@@ -602,6 +611,7 @@ class ImageWorker(QThread):
                 'objects': total_objects,
                 'inference_ms': results[0].speed.get('inference', 0.0),
                 'details': obj_stats,
+                'conf': obj_conf,
                 'depth': depth_info,
             }
             
@@ -726,7 +736,7 @@ class TrainWorker(QThread):
     progress_signal = pyqtSignal(dict)
     finished_signal = pyqtSignal()
     
-    def __init__(self, model_path, data_yaml, epochs, batch, imgsz, device, resume=False):
+    def __init__(self, model_path, data_yaml, epochs, batch, imgsz, device, resume=False, amp=True):
         super().__init__()
         self.model_path = model_path
         self.data_yaml = data_yaml
@@ -735,6 +745,7 @@ class TrainWorker(QThread):
         self.imgsz = imgsz
         self.device = device
         self.resume = resume
+        self.amp = amp
         self.is_running = True
         self.start_time = None
         
@@ -798,7 +809,8 @@ class TrainWorker(QThread):
                 batch=self.batch,
                 imgsz=self.imgsz,
                 device=self.device,
-                resume=self.resume
+                resume=self.resume,
+                amp=self.amp
             )
             
             self.log_signal.emit("Training completed successfully!")
@@ -917,7 +929,7 @@ class ExportWorker(QThread):
     log_signal = pyqtSignal(str)
     finished_signal = pyqtSignal()
     
-    def __init__(self, model_path, format, imgsz, half, int8, dynamic, simplify, device):
+    def __init__(self, model_path, format, imgsz, half, int8, dynamic, simplify, device, calib_data=None):
         super().__init__()
         self.model_path = model_path
         self.format = format
@@ -927,6 +939,7 @@ class ExportWorker(QThread):
         self.dynamic = dynamic
         self.simplify = simplify
         self.device = device
+        self.calib_data = calib_data
         
     def run(self):
         try:
@@ -937,6 +950,7 @@ class ExportWorker(QThread):
                 imgsz=self.imgsz,
                 half=self.half,
                 int8=self.int8,
+                data=self.calib_data,
                 dynamic=self.dynamic,
                 simplify=self.simplify,
                 device=self.device

@@ -218,7 +218,7 @@ class MainWindow(QMainWindow):
         self.val_worker = None
         self.benchmark_worker = None
         self.last_val_results = None
-        self.current_device = 'cpu'
+        self.current_device = '0'
         
         # Apply Theme
         self.apply_theme()
@@ -344,18 +344,40 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.benchmark_tab, "Benchmark")
         self.tabs.addTab(self.settings_tab, "Settings")
         
-        # Console
+        # Console (training/inference logs area)
         self.console = QTextEdit()
         self.console.setReadOnly(True)
-        self.console.setMaximumHeight(150)
+        self.console.setMaximumHeight(500)
+        self.console.setMinimumHeight(200)
         self.console.setPlaceholderText("System logs...")
-        
+
+        console_widget = QWidget()
+        console_widget.setObjectName("ConsoleWidget")
+        console_widget.setMinimumHeight(220)
+        console_widget.setMaximumHeight(520)
+        console_layout = QVBoxLayout(console_widget)
+        console_layout.setContentsMargins(0, 0, 0, 0)
+        console_layout.setSpacing(2)
+
+        console_header = QHBoxLayout()
+        self.lbl_console_title = QLabel("System logs")
+        self.lbl_console_title.setStyleSheet("font-weight: bold;")
+        self.btn_clear_console = QPushButton("清除")
+        self.btn_clear_console.setMaximumWidth(60)
+        self.btn_clear_console.setProperty("class", "SecondaryButton")
+        self.btn_clear_console.clicked.connect(self.clear_console)
+        console_header.addWidget(self.lbl_console_title)
+        console_header.addStretch()
+        console_header.addWidget(self.btn_clear_console)
+        console_layout.addLayout(console_header)
+        console_layout.addWidget(self.console)
+
         # Splitter for Tabs and Console
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.addWidget(self.tabs)
-        splitter.addWidget(self.console)
-        splitter.setStretchFactor(0, 4)
-        splitter.setStretchFactor(1, 1)
+        splitter.addWidget(console_widget)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 2)
         
         main_layout.addWidget(splitter)
         
@@ -407,9 +429,21 @@ class MainWindow(QMainWindow):
         if not _cuda_available:
             self.radio_gpu.setEnabled(False)
             self.radio_gpu.setToolTip("CUDA 不可用：当前 PyTorch 为 CPU 版本或未检测到可用显卡驱动，请安装 CUDA 版 PyTorch")
-        self.radio_cpu.setChecked(True)
+            self.radio_cpu.setChecked(True)
+        else:
+            self.radio_gpu.setChecked(True)
         self.radio_cpu.toggled.connect(self.change_device)
         self.radio_gpu.toggled.connect(self.change_device)
+        # 高亮填充样式的设备单选框
+        _radio_qss = """
+        QRadioButton { padding: 6px 10px; border-radius: 6px; background: rgba(255,255,255,0.06); }
+        QRadioButton:hover { background: rgba(255,255,255,0.12); }
+        QRadioButton:checked { background: rgba(0,150,255,0.85); color: #ffffff; font-weight: bold; }
+        QRadioButton::indicator { width: 14px; height: 14px; }
+        QRadioButton:disabled { background: rgba(255,255,255,0.04); color: #888888; }
+        """
+        self.radio_cpu.setStyleSheet(_radio_qss)
+        self.radio_gpu.setStyleSheet(_radio_qss)
         device_layout.addWidget(self.radio_cpu)
         device_layout.addWidget(self.radio_gpu)
         self.device_group.setLayout(device_layout)
@@ -696,6 +730,10 @@ class MainWindow(QMainWindow):
         # Resume Checkbox
         self.chk_resume = QCheckBox("Resume Training (from last.pt)")
         form_layout.addWidget(self.chk_resume)
+
+        self.chk_amp = QCheckBox("AMP - 自动混合精度加速 (GPU; 首次需联网下载校验模型)")
+        self.chk_amp.setChecked(True)
+        form_layout.addWidget(self.chk_amp)
         
         # Training Stats
         stats_group = QGroupBox("Training Status")
@@ -711,17 +749,12 @@ class MainWindow(QMainWindow):
         stats_group.setLayout(stats_layout)
         form_layout.addWidget(stats_group)
         
-        # Start Button
+        # Start / Stop Training (single toggle button)
         self.btn_train = QPushButton(Config.get("start_train"))
         self.btn_train.setProperty("class", "ActionButton")
-        self.btn_train.clicked.connect(self.start_training)
+        self.btn_train.clicked.connect(self.toggle_training)
         form_layout.addWidget(self.btn_train)
-        
-        self.btn_stop_train = QPushButton(Config.get("stop_train"))
-        self.btn_stop_train.setProperty("class", "SecondaryButton")
-        self.btn_stop_train.clicked.connect(self.stop_training)
-        self.btn_stop_train.setEnabled(False)
-        form_layout.addWidget(self.btn_stop_train)
+        self._training = False
         
         self.train_progress = QProgressBar()
         self.train_progress.setValue(0)
@@ -887,6 +920,24 @@ class MainWindow(QMainWindow):
         opts_layout.addWidget(self.chk_dynamic)
         opts_layout.addWidget(self.chk_simplify)
 
+        # 校准数据 (INT8 量化用)
+        calib_layout = QHBoxLayout()
+        self.export_data_edit = QLabel("(未选择校准数据)")
+        self.export_data_edit.setFrameStyle(QFrame.Shape.StyledPanel | QFrame.Shadow.Sunken)
+        self.export_data_edit.setStyleSheet("color: #999;")
+        btn_browse_calib = QPushButton("...")
+        btn_browse_calib.clicked.connect(self.browse_export_data)
+        self.btn_browse_calib = btn_browse_calib
+        calib_layout.addWidget(QLabel("校准数据 (.yaml) - INT8 量化用:"))
+        calib_layout.addWidget(self.export_data_edit, 1)
+        calib_layout.addWidget(btn_browse_calib)
+        self.lbl_export_data = calib_layout.itemAt(0).widget()
+        opts_layout.addLayout(calib_layout)
+
+        # 根据 INT8 勾选状态决定校准数据是否可用
+        self.chk_int8.toggled.connect(self._sync_export_data_enabled)
+        self._sync_export_data_enabled()
+
         # 根据所选导出格式联动启用/禁用选项（防止导出失败）
         self.combo_format.currentIndexChanged.connect(self._on_export_format_changed)
         self._on_export_format_changed()  # 初始化一次当前格式的状态
@@ -949,6 +1000,9 @@ class MainWindow(QMainWindow):
     def log(self, message):
         self.console.append(f">> {message}")
         print(message)
+
+    def clear_console(self):
+        self.console.clear()
 
     def switch_tab(self, index):
         self.tabs.setCurrentIndex(index)
@@ -1255,8 +1309,12 @@ class MainWindow(QMainWindow):
         self.fps_label.setText(f"Inference: {stats['inference_ms']:.1f}ms")
         
         self.result_list.addItem(f"Total Objects: {stats['objects']}")
+        confs = stats.get('conf') or {}
         for name, count in stats['details'].items():
-            self.result_list.addItem(f"{name}: {count}")
+            if name in confs:
+                self.result_list.addItem(f"{name} x{count} (conf: {confs[name]:.2f})")
+            else:
+                self.result_list.addItem(f"{name}: {count}")
         if stats.get('depth'):
             d = stats['depth']
             self.result_list.addItem(f"Center: {d['center']:.2f}m | Mean: {d['mean']:.2f}m")
@@ -1351,9 +1409,12 @@ class MainWindow(QMainWindow):
         self.result_list.addItem(f"Total Objects: {stats['objects']}")
         self.result_list.addItem(f"Inference: {stats['inference_ms']:.1f}ms")
         
-        # Add detailed object counts
-        if 'details' in stats:
-            for name, count in stats['details'].items():
+        # Add detailed object counts (含每类置信度)
+        confs = stats.get('conf') or {}
+        for name, count in stats['details'].items():
+            if name in confs:
+                self.result_list.addItem(f"{name} x{count} (conf: {confs[name]:.2f})")
+            else:
                 self.result_list.addItem(f"{name}: {count}")
         
         # Add depth distance stats
@@ -1451,6 +1512,13 @@ class MainWindow(QMainWindow):
         if file_name:
             self.train_data_edit.setText(file_name)
 
+    def toggle_training(self):
+        """开始/停止训练 合并按钮。"""
+        if not self._training:
+            self.start_training()
+        else:
+            self.stop_training()
+
     def start_training(self):
         model_path = self.train_model_edit.text()
         data = self.train_data_edit.text()
@@ -1458,6 +1526,7 @@ class MainWindow(QMainWindow):
         batch = self.spin_batch.value()
         imgsz = self.spin_imgsz.value()
         resume = self.chk_resume.isChecked()
+        amp = self.chk_amp.isChecked()
         
         # Use globally selected device for training too, unless overridden? 
         # For now let's use the CPU/GPU radio button selection or keep training specific?
@@ -1470,13 +1539,17 @@ class MainWindow(QMainWindow):
         self.lbl_train_eta.setText("ETA: Calculating...")
         self.lbl_train_end.setText("Est. Finish: Calculating...")
         
-        self.train_worker = TrainWorker(model_path, data, epochs, batch, imgsz, device, resume=resume)
+        self.train_worker = TrainWorker(model_path, data, epochs, batch, imgsz, device, resume=resume, amp=amp)
         self.train_worker.log_signal.connect(self.log)
         self.train_worker.progress_signal.connect(self.update_train_progress)
         self.train_worker.finished_signal.connect(self.training_finished)
         
-        self.btn_train.setEnabled(False)
-        self.btn_stop_train.setEnabled(True)
+        self.btn_train.setProperty("class", "SecondaryButton")
+        self.btn_train.setText(Config.get("stop_train"))
+        self.btn_train.style().unpolish(self.btn_train)
+        self.btn_train.style().polish(self.btn_train)
+        self.btn_train.setEnabled(True)
+        self._training = True
         self.train_progress.setRange(0, epochs)
         self.train_progress.setValue(0)
         self.train_worker.start()
@@ -1485,11 +1558,16 @@ class MainWindow(QMainWindow):
         if self.train_worker:
             self.train_worker.stop()
             self.log("Stopping training...")
-            self.btn_stop_train.setEnabled(False) # Prevent multiple clicks
+            self.btn_train.setEnabled(False)  # 防止重复点击
+            self.btn_train.setText(Config.get("stop_train"))
 
     def training_finished(self):
+        self.btn_train.setProperty("class", "ActionButton")
+        self.btn_train.setText(Config.get("start_train"))
+        self.btn_train.style().unpolish(self.btn_train)
+        self.btn_train.style().polish(self.btn_train)
         self.btn_train.setEnabled(True)
-        self.btn_stop_train.setEnabled(False)
+        self._training = False
         self.log("Training worker finished.")
         self.lbl_train_speed.setText("Speed: Finished")
         self.lbl_train_eta.setText("ETA: 00:00:00")
@@ -1698,6 +1776,23 @@ class MainWindow(QMainWindow):
             self.chk_simplify.setEnabled(False)
             self.chk_dynamic.setChecked(False)
             self.chk_dynamic.setEnabled(False)
+        self._sync_export_data_enabled()
+
+    def browse_export_data(self):
+        file_name, _ = QFileDialog.getOpenFileName(self, "Select Calibration Data YAML", "", "YAML Files (*.yaml)")
+        if file_name:
+            self.export_data_edit.setText(file_name)
+            self.export_data_edit.setStyleSheet("")
+        else:
+            self.export_data_edit.setText("(未选择校准数据)")
+            self.export_data_edit.setStyleSheet("color: #999;")
+
+    def _sync_export_data_enabled(self):
+        """只有勾选 INT8 时才允许选择校准数据。"""
+        enable = self.chk_int8.isChecked() and self.chk_int8.isEnabled()
+        self.lbl_export_data.setEnabled(enable)
+        self.export_data_edit.setEnabled(enable)
+        self.btn_browse_calib.setEnabled(enable)
 
     def export_model(self):
         selected_text = self.combo_format.currentText()
@@ -1712,11 +1807,19 @@ class MainWindow(QMainWindow):
         dynamic = self.chk_dynamic.isChecked()
         simplify = self.chk_simplify.isChecked()
         device = self.current_device
-        
+        # INT8 量化时传校准数据；未勾选 INT8 时传 None
+        calib_data = None
+        if int8:
+            calib_data = self.export_data_edit.text()
+            if calib_data in ("", "(未选择校准数据)"):
+                self.log("警告：INT8 量化需要校准数据(.yaml)，请先在导出页选择校准数据")
+                self.btn_export.setEnabled(True)
+                return
+
         self.log(f"Starting export of {model_path} to {fmt}...")
         self.btn_export.setEnabled(False)
         
-        self.export_worker = ExportWorker(model_path, fmt, imgsz, half, int8, dynamic, simplify, device)
+        self.export_worker = ExportWorker(model_path, fmt, imgsz, half, int8, dynamic, simplify, device, calib_data)
         self.export_worker.log_signal.connect(self.log)
         self.export_worker.finished_signal.connect(lambda: self.btn_export.setEnabled(True))
         self.export_worker.start()
