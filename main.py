@@ -335,13 +335,20 @@ class MainWindow(QMainWindow):
         self.benchmark_tab = self.create_benchmark_tab()
         self.settings_tab = QWidget() # Placeholder
         
-        self.tabs.addTab(self.realtime_tab, "Real-time")
-        self.tabs.addTab(self.image_tab, "Image")
-        self.tabs.addTab(self.video_tab, "Video")
-        self.tabs.addTab(self.train_tab, "Train")
+        # 给 tab 页面套上可滚动区域，避免内容最小尺寸把窗口撑得超出屏幕
+        def _scrollable(widget):
+            sa = QScrollArea()
+            sa.setWidgetResizable(True)
+            sa.setWidget(widget)
+            return sa
+
+        self.tabs.addTab(_scrollable(self.realtime_tab), "Real-time")
+        self.tabs.addTab(_scrollable(self.image_tab), "Image")
+        self.tabs.addTab(_scrollable(self.video_tab), "Video")
+        self.tabs.addTab(_scrollable(self.train_tab), "Train")
         self.tabs.addTab(self.val_tab, "Val")
-        self.tabs.addTab(self.export_tab, "Export")
-        self.tabs.addTab(self.benchmark_tab, "Benchmark")
+        self.tabs.addTab(_scrollable(self.export_tab), "Export")
+        self.tabs.addTab(_scrollable(self.benchmark_tab), "Benchmark")
         self.tabs.addTab(self.settings_tab, "Settings")
         
         # Console (training/inference logs area)
@@ -999,6 +1006,9 @@ class MainWindow(QMainWindow):
 
     def log(self, message):
         self.console.append(f">> {message}")
+        # 自动滚动到最新日志
+        sb = self.console.verticalScrollBar()
+        sb.setValue(sb.maximum())
         print(message)
 
     def clear_console(self):
@@ -1828,5 +1838,9 @@ if __name__ == "__main__":
     multiprocessing.freeze_support()
     app = QApplication(sys.argv)
     window = MainWindow()
+    # 让窗口适配屏幕可用区域，避免窗口高于屏幕时底部日志栏被截断
+    _avail = app.primaryScreen().availableGeometry()
+    window.resize(min(window.width(), _avail.width()),
+                  min(window.height(), _avail.height()))
     window.show()
     sys.exit(app.exec())
