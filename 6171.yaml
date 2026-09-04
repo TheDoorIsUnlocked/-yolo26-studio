@@ -6,4 +6,5 @@ test: test/images
 #Classes
 names:
   0: ng_1
-  1: ok_1
+  1: ng_2
+  2: ok_1

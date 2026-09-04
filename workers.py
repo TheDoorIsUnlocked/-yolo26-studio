@@ -895,33 +895,66 @@ class ValWorker(QThread):
 
 class BenchmarkWorker(QThread):
     log_signal = pyqtSignal(str)
+    results_signal = pyqtSignal(dict)
     finished_signal = pyqtSignal()
     
-    def __init__(self, model_path, data_yaml, imgsz, device):
+    def __init__(self, model_path, fmt, imgsz, device):
         super().__init__()
         self.model_path = model_path
-        self.data_yaml = data_yaml
+        self.fmt = fmt
         self.imgsz = imgsz
         self.device = device
         
     def run(self):
         try:
-            self.log_signal.emit(f"Starting benchmark with model: {self.model_path}")
+            # 仅 CPU 才能跑的格式（OpenVINO/TFLite 等在本机不支持 GPU）
+            bench_device = self.device if self.fmt in ('pytorch', 'onnx', 'torchscript', 'engine') else 'cpu'
+            self.log_signal.emit(f"Benchmarking {self.fmt} at imgsz={self.imgsz} on {bench_device}...")
             model = YOLO(self.model_path)
-            
-            # Benchmark doesn't strictly require data_yaml usually, but can use it.
-            # model.benchmark() args: model, data, imgsz, half, int8, device, etc.
-            # Using basic args for now.
-            model.benchmark(
-                data=self.data_yaml,
-                imgsz=self.imgsz,
-                device=self.device
-            )
-            
-            self.log_signal.emit("Benchmark completed successfully!")
+
+            # 参数量
+            params = 0
+            try:
+                model_model = getattr(model, "model", None)
+                if model_model is not None:
+                    params = sum(p.numel() for p in model_model.parameters())
+                else:
+                    params = int(model.info().get("parameters", 0))
+            except Exception:
+                params = 0
+
+            # 非 PyTorch 格式需先导出
+            run_path = self.model_path
+            if self.fmt != 'pytorch':
+                run_path = model.export(format=self.fmt, imgsz=self.imgsz, device=bench_device)
+
+            bm = YOLO(run_path)
+            dummy = np.zeros((self.imgsz, self.imgsz, 3), dtype=np.uint8)
+
+            # 预热
+            for _ in range(3):
+                bm.predict(dummy, imgsz=self.imgsz, device=bench_device, verbose=False)
+
+            # 计时
+            n = 20
+            t0 = time.perf_counter()
+            for _ in range(n):
+                bm.predict(dummy, imgsz=self.imgsz, device=bench_device, verbose=False)
+            latency = (time.perf_counter() - t0) / n * 1000.0
+
+            result = {
+                'format': self.fmt,
+                'device': bench_device,
+                'imgsz': self.imgsz,
+                'params': params / 1e6,
+                'latency_ms': latency,
+                'fps': 1000.0 / latency if latency > 0 else 0.0,
+            }
+            self.results_signal.emit(result)
+            self.log_signal.emit(f"[{self.fmt}] {latency:.2f} ms/image, {1000.0/latency:.1f} FPS")
             
         except Exception as e:
-            self.log_signal.emit(f"Benchmark failed: {e}")
+            self.log_signal.emit(f"Benchmark failed for {self.fmt}: {e}")
         finally:
             self.finished_signal.emit()
 
