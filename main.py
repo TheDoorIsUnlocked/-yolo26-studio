@@ -355,15 +355,16 @@ class MainWindow(QMainWindow):
         self.console = QTextEdit()
         self.console.setReadOnly(True)
         self.console.setMaximumHeight(500)
-        self.console.setMinimumHeight(200)
+        self.console.setMinimumHeight(80)
         self.console.setPlaceholderText("System logs...")
+        self.console.setObjectName("ConsoleLog")
 
         console_widget = QWidget()
         console_widget.setObjectName("ConsoleWidget")
-        console_widget.setMinimumHeight(220)
+        console_widget.setMinimumHeight(100)
         console_widget.setMaximumHeight(520)
         console_layout = QVBoxLayout(console_widget)
-        console_layout.setContentsMargins(0, 0, 0, 0)
+        console_layout.setContentsMargins(0, 0, 0, 10)
         console_layout.setSpacing(2)
 
         console_header = QHBoxLayout()
@@ -507,7 +508,13 @@ class MainWindow(QMainWindow):
         dock_layout.addWidget(self.result_group)
         dock_layout.addStretch()
         
-        self.dock.setWidget(dock_content)
+        # 右侧控制面板内容套可滚动区，避免其内容最小高度把窗口撑超出屏幕
+        dock_scroll = QScrollArea()
+        dock_scroll.setWidgetResizable(True)
+        dock_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        dock_scroll.setWidget(dock_content)
+        dock_content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.dock.setWidget(dock_scroll)
         
         # Assemble Main Layout
         central_widget = QWidget()
@@ -515,7 +522,16 @@ class MainWindow(QMainWindow):
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(0)
         
-        central_layout.addWidget(self.side_nav)
+        # 左侧导航栏套可滚动区，避免 8 个按钮把窗口最小高度撑到超屏
+        nav_scroll = QScrollArea()
+        nav_scroll.setWidgetResizable(True)
+        nav_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        nav_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        nav_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        nav_scroll.setWidget(self.side_nav)
+        nav_scroll.setFixedWidth(100)
+        nav_scroll.setMinimumWidth(100)
+        central_layout.addWidget(nav_scroll)
         
         # Right side container (TopBar + Workspace)
         right_container = QWidget()
@@ -994,22 +1010,54 @@ class MainWindow(QMainWindow):
         self.spin_bench_imgsz.setValue(640)
         form_layout.addWidget(QLabel(Config.get("imgsz")))
         form_layout.addWidget(self.spin_bench_imgsz)
-        
+
+        # 基准测试格式选择（单格式测速，避免自动导出所有格式）
+        form_layout.addWidget(QLabel("测试格式"))
+        self.bench_format_combo = QComboBox()
+        self.bench_formats = {
+            "PyTorch (.pt) - 原生": "pytorch",
+            "ONNX (.onnx)": "onnx",
+            "OpenVINO (.xml) - CPU": "openvino",
+            "TorchScript (.torchscript)": "torchscript",
+            "TensorRT (.engine) - GPU 需装 tensorrt": "engine",
+            "TFLite (.tflite) - 需装 tensorflow": "tflite",
+        }
+        self.bench_format_combo.addItems(self.bench_formats.keys())
+        form_layout.addWidget(self.bench_format_combo)
+
         self.btn_bench = QPushButton(Config.get("start_benchmark"))
         self.btn_bench.setProperty("class", "ActionButton")
         self.btn_bench.clicked.connect(self.start_benchmark)
         form_layout.addWidget(self.btn_bench)
-        
+
+        # 基准测试结果表
+        self.bench_results_table = QTableWidget()
+        self.bench_results_table.setColumnCount(6)
+        self.bench_results_table.setHorizontalHeaderLabels(
+            ["格式", "设备", "imgsz", "参数量(M)", "延迟(ms)", "FPS"]
+        )
+        self.bench_results_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.bench_results_table.setFixedHeight(150)
+        form_layout.addWidget(self.bench_results_table)
+
         layout.addLayout(form_layout)
         layout.addStretch()
         return tab
 
     def log(self, message):
         self.console.append(f">> {message}")
-        # 自动滚动到最新日志
+        # 自动滚动到最新日志（等布局更新后再滚，确保最后一行完整可见）
+        QTimer.singleShot(0, self._scroll_console_to_bottom)
+        print(message)
+
+    def _scroll_console_to_bottom(self):
+        from PyQt6.QtGui import QTextCursor
+        cursor = self.console.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        self.console.setTextCursor(cursor)
+        self.console.ensureCursorVisible()
         sb = self.console.verticalScrollBar()
         sb.setValue(sb.maximum())
-        print(message)
 
     def clear_console(self):
         self.console.clear()
@@ -1193,14 +1241,14 @@ class MainWindow(QMainWindow):
         self.btn_next_img.setText(Config.get("next_image"))
         self.btn_save_img.setText(Config.get("save_res"))
         self.btn_open_video.setText(Config.get("open_video"))
-        self.btn_stop_video.setText(Config.get("stop_process"))
+        _vid_running = self.video_file_worker is not None and self.video_file_worker.isRunning()
+        self.btn_process_video.setText(Config.get("stop_process") if _vid_running else Config.get("process_video"))
         
         self.lbl_data.setText(Config.get("data_path"))
         self.lbl_epochs.setText(Config.get("epochs"))
         self.lbl_batch.setText(Config.get("batch"))
         self.lbl_imgsz.setText(Config.get("imgsz"))
-        self.btn_train.setText(Config.get("start_train"))
-        self.btn_stop_train.setText(Config.get("stop_train"))
+        self.btn_train.setText(Config.get("start_train") if not self._training else Config.get("stop_train"))
         
         # Val
         self.lbl_val_model.setText(Config.get("model_path"))
@@ -1744,17 +1792,33 @@ class MainWindow(QMainWindow):
 
     def start_benchmark(self):
         model_path = self.bench_model_edit.text()
-        data = self.bench_data_edit.text()
         imgsz = self.spin_bench_imgsz.value()
+        fmt = self.bench_formats.get(self.bench_format_combo.currentText(), "pytorch")
         device = self.current_device
-        
-        self.log(f"Starting benchmark on {model_path}...")
+
+        self.log(f"Starting benchmark: {model_path} -> {fmt} (imgsz={imgsz}, device={device})")
         self.btn_bench.setEnabled(False)
-        
-        self.benchmark_worker = BenchmarkWorker(model_path, data, imgsz, device)
+
+        self.benchmark_worker = BenchmarkWorker(model_path, fmt, imgsz, device)
         self.benchmark_worker.log_signal.connect(self.log)
+        self.benchmark_worker.results_signal.connect(self.update_benchmark_result)
         self.benchmark_worker.finished_signal.connect(lambda: self.btn_bench.setEnabled(True))
         self.benchmark_worker.start()
+
+    def update_benchmark_result(self, res):
+        row = self.bench_results_table.rowCount()
+        self.bench_results_table.insertRow(row)
+        vals = [
+            res.get('format', ''),
+            res.get('device', ''),
+            str(res.get('imgsz', '')),
+            f"{res.get('params', 0):.2f}",
+            f"{res.get('latency_ms', 0):.3f}",
+            f"{res.get('fps', 0):.1f}",
+        ]
+        for c, v in enumerate(vals):
+            self.bench_results_table.setItem(row, c, QTableWidgetItem(v))
+        self.bench_results_table.scrollToBottom()
 
     # Export Logic
     def browse_export_model(self):

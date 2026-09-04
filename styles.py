@@ -157,6 +157,14 @@ class Theme:
             border-top: 1px solid {c["BORDER"]};
         }}
         
+        /* System log 文档框完整边框 */
+        QTextEdit#ConsoleLog {{
+            background-color: {c["BG_SUB"]};
+            color: {c["TEXT_SUB"]};
+            border: 1px solid {c["BORDER"]};
+            border-radius: 4px;
+        }}
+        
         /* Tabs */
         QTabWidget::pane {{
             border: 1px solid {c["BORDER"]};
