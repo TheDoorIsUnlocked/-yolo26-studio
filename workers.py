@@ -993,3 +993,141 @@ class ExportWorker(QThread):
             self.log_signal.emit(f"Export failed: {e}")
         finally:
             self.finished_signal.emit()
+
+
+# ---------------------------------------------------------------------------
+# DINOv3 异常检测 worker(建库 / 验证 / 导出 ONNX)
+# ---------------------------------------------------------------------------
+
+def _import_dino_anomaly():
+    """按需导入 anomaly 核心库,并把它所在目录加入 sys.path。"""
+    anomaly_dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "docs", "DINVo3", "anomaly")
+    if anomaly_dir not in sys.path:
+        sys.path.insert(0, anomaly_dir)
+    import dino_anomaly
+    return dino_anomaly
+
+
+class AnomalyBuildWorker(QThread):
+    """良品特征库构建:良品目录 → .npz(内部同步产出 .fbin)。"""
+
+    log_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal()
+    result_signal = pyqtSignal(dict)
+
+    def __init__(self, model_name, weights, repo_dir, good_dir, out_path,
+                 bank_size, device):
+        super().__init__()
+        self.model_name = model_name
+        self.weights = weights
+        self.repo_dir = repo_dir
+        self.good_dir = good_dir
+        self.out_path = out_path
+        self.bank_size = bank_size
+        self.device = device
+
+    def run(self):
+        try:
+            da = _import_dino_anomaly()
+            self.log_signal.emit(f"加载骨干 {self.model_name} ...")
+            model, patch_size, device = da.load_model(
+                self.model_name, "facebookresearch/dinov2", self.device,
+                weights_path=self.weights, repo_dir=self.repo_dir)
+            paths = da.list_images(self.good_dir)
+            if not paths:
+                self.log_signal.emit(f"错误:目录下没有可用图片 {self.good_dir}")
+                return
+            self.log_signal.emit(f"开始建库:{len(paths)} 张良品图")
+            info = da.build_bank(
+                model, patch_size, paths, self.out_path, device,
+                self.bank_size, log=lambda m: self.log_signal.emit(str(m)),
+                model_name=self.model_name)
+            self.result_signal.emit(info)
+            self.log_signal.emit("建库完成")
+        except Exception as e:
+            self.log_signal.emit(f"建库失败:{e}")
+        finally:
+            self.finished_signal.emit()
+
+
+class AnomalyValidateWorker(QThread):
+    """验证特征库:良品/缺陷目录 → AUROC、建议阈值、热力图。"""
+
+    log_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal()
+    result_signal = pyqtSignal(list)
+
+    def __init__(self, model_name, weights, repo_dir, bank_path, good_dir,
+                 ng_dir, out_dir, device, top_k_heatmap=20):
+        super().__init__()
+        self.model_name = model_name
+        self.weights = weights
+        self.repo_dir = repo_dir
+        self.bank_path = bank_path
+        self.good_dir = good_dir
+        self.ng_dir = ng_dir
+        self.out_dir = out_dir
+        self.device = device
+        self.top_k_heatmap = top_k_heatmap
+
+    def run(self):
+        try:
+            import torch
+
+            da = _import_dino_anomaly()
+            device = da.norm_device(self.device)
+            bank, meta = da.load_bank(self.bank_path)
+            self.log_signal.emit(f"特征库:{bank.shape[0]} 条 ({meta})")
+            model, patch_size, device = da.load_model(
+                self.model_name, "facebookresearch/dinov2", device,
+                weights_path=self.weights, repo_dir=self.repo_dir)
+            bank_t = torch.from_numpy(bank).to(device)
+            items = [(p, 0) for p in da.list_images(self.good_dir)]
+            items += [(p, 1) for p in da.list_images(self.ng_dir)]
+            if not items:
+                self.log_signal.emit("错误:良品与缺陷目录都为空")
+                return
+            self.log_signal.emit(f"开始验证:{len(items)} 张图")
+            lines = da.validate_dataset(
+                model, patch_size, bank_t, items, self.out_dir, device,
+                self.top_k_heatmap,
+                log=lambda m: self.log_signal.emit(str(m)))
+            self.result_signal.emit(list(lines))
+            self.log_signal.emit("验证完成")
+        except Exception as e:
+            self.log_signal.emit(f"验证失败:{e}")
+        finally:
+            self.finished_signal.emit()
+
+
+class AnomalyExportWorker(QThread):
+    """导出 DINO 骨干为 ONNX(供服务端 / C++ 推理使用)。"""
+
+    log_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal()
+    result_signal = pyqtSignal(str)
+
+    def __init__(self, model_name, weights, repo_dir, out_path, device):
+        super().__init__()
+        self.model_name = model_name
+        self.weights = weights
+        self.repo_dir = repo_dir
+        self.out_path = out_path
+        self.device = device
+
+    def run(self):
+        try:
+            _import_dino_anomaly()  # 确保 anomaly 目录已在 sys.path 中
+            import export_dino_onnx
+
+            path, img_size, shape = export_dino_onnx.export_onnx(
+                self.model_name, self.weights, self.repo_dir, self.out_path,
+                self.device, log=lambda m: self.log_signal.emit(str(m)))
+            self.result_signal.emit(path)
+            self.log_signal.emit(f"导出完成:{path}")
+            self.log_signal.emit(f"  输入 1x3x{img_size}x{img_size},输出 {shape}")
+        except Exception as e:
+            self.log_signal.emit(f"导出失败:{e}")
+        finally:
+            self.finished_signal.emit()

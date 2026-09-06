@@ -21,7 +21,10 @@ from PyQt6.QtMultimedia import QMediaDevices
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from styles import Theme
-from workers import VideoThread, ImageWorker, TrainWorker, VideoFileWorker, ExportWorker, ValWorker, BenchmarkWorker
+from workers import (VideoThread, ImageWorker, TrainWorker, VideoFileWorker,
+                     ExportWorker, ValWorker, BenchmarkWorker,
+                     AnomalyBuildWorker, AnomalyValidateWorker,
+                     AnomalyExportWorker)
 from config import Config
 from val_report import build_markdown, build_json
 
@@ -290,7 +293,8 @@ class MainWindow(QMainWindow):
             ("✅", "val", 4),
             ("📤", "export", 5),
             ("📈", "benchmark", 6),
-            ("⚙️", "settings", 7)
+            ("🔬", "anomaly", 7),
+            ("⚙️", "settings", 8)
         ]
         
         for icon, key, idx in self.nav_items:
@@ -333,6 +337,7 @@ class MainWindow(QMainWindow):
         self.val_tab = self.create_val_tab()
         self.export_tab = self.create_export_tab()
         self.benchmark_tab = self.create_benchmark_tab()
+        self.anomaly_tab = self.create_anomaly_tab()
         self.settings_tab = QWidget() # Placeholder
         
         # 给 tab 页面套上可滚动区域，避免内容最小尺寸把窗口撑得超出屏幕
@@ -349,6 +354,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.val_tab, "Val")
         self.tabs.addTab(_scrollable(self.export_tab), "Export")
         self.tabs.addTab(_scrollable(self.benchmark_tab), "Benchmark")
+        self.tabs.addTab(_scrollable(self.anomaly_tab), "Anomaly")
         self.tabs.addTab(self.settings_tab, "Settings")
         
         # Console (training/inference logs area)
@@ -975,6 +981,261 @@ class MainWindow(QMainWindow):
         layout.addLayout(form_layout)
         layout.addStretch()
         return tab
+
+    # ---------------- Anomaly (DINOv3 异常检测: 建库/验证/导出) ----------------
+    @staticmethod
+    def _make_path_row(label_text, initial="", on_browse=None):
+        """构造"标签 + 只读路径 + 浏览按钮"的一行,返回 (layout, edit)。"""
+        row = QHBoxLayout()
+        row.addWidget(QLabel(label_text))
+        edit = QLabel(initial)
+        edit.setFrameStyle(QFrame.Shape.StyledPanel | QFrame.Shadow.Sunken)
+        row.addWidget(edit)
+        btn = QPushButton("...")
+        if on_browse is not None:
+            btn.clicked.connect(on_browse)
+        row.addWidget(btn)
+        return row, edit
+
+    def create_anomaly_tab(self):
+        tab = QWidget()
+        outer = QVBoxLayout(tab)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+
+        root = os.path.dirname(os.path.abspath(__file__))
+        default_weights = os.path.join(
+            root, "docs", "DINVo3",
+            "dinov3_vits16_pretrain_lvd1689m-08c60483.pth")
+        default_bank = os.path.join(root, "models", "anomaly_bank.npz")
+        default_onnx = os.path.join(root, "models",
+                                    "dinov3_vits16_anomaly.onnx")
+        default_out = os.path.join(root, "out", "anomaly")
+
+        # ---- 区块一:特征库建库 ----
+        build_group = QGroupBox(Config.get("anomaly_build_group"))
+        bl = QVBoxLayout(build_group)
+
+        mrow = QHBoxLayout()
+        mrow.addWidget(QLabel("Backbone"))
+        self.combo_anomaly_model = QComboBox()
+        self.combo_anomaly_model.addItems([
+            "dinov3_vits16", "dinov3_vits16plus", "dinov3_vitb16",
+            "dinov3_convnext_tiny", "dinov3_convnext_small"])
+        mrow.addWidget(self.combo_anomaly_model)
+        bl.addLayout(mrow)
+
+        row, self.anomaly_weights_edit = self._make_path_row(
+            Config.get("anomaly_weights"),
+            default_weights if os.path.isfile(default_weights) else "",
+            self.browse_anomaly_weights)
+        bl.addLayout(row)
+
+        row, self.anomaly_good_edit = self._make_path_row(
+            Config.get("anomaly_good_dir"), "", self.browse_anomaly_good_dir)
+        bl.addLayout(row)
+
+        srow = QHBoxLayout()
+        srow.addWidget(QLabel(Config.get("anomaly_bank_size")))
+        self.spin_anomaly_bank = QSpinBox()
+        self.spin_anomaly_bank.setRange(512, 262144)
+        self.spin_anomaly_bank.setValue(16384)
+        srow.addWidget(self.spin_anomaly_bank)
+        bl.addLayout(srow)
+
+        row, self.anomaly_bank_out_edit = self._make_path_row(
+            Config.get("anomaly_bank_out"), default_bank,
+            self.browse_anomaly_bank_out)
+        bl.addLayout(row)
+
+        self.btn_anomaly_build = QPushButton(Config.get("anomaly_start_build"))
+        self.btn_anomaly_build.setProperty("class", "ActionButton")
+        self.btn_anomaly_build.clicked.connect(self.start_anomaly_build)
+        bl.addWidget(self.btn_anomaly_build)
+        layout.addWidget(build_group)
+
+        # ---- 区块二:验证 ----
+        val_group = QGroupBox(Config.get("anomaly_validate_group"))
+        vl = QVBoxLayout(val_group)
+
+        row, self.anomaly_bank_edit = self._make_path_row(
+            Config.get("anomaly_bank_file"), default_bank,
+            self.browse_anomaly_bank)
+        vl.addLayout(row)
+
+        row, self.anomaly_tgood_edit = self._make_path_row(
+            Config.get("anomaly_test_good"), "", self.browse_anomaly_tgood)
+        vl.addLayout(row)
+
+        row, self.anomaly_tng_edit = self._make_path_row(
+            Config.get("anomaly_test_ng"), "", self.browse_anomaly_tng)
+        vl.addLayout(row)
+
+        row, self.anomaly_val_out_edit = self._make_path_row(
+            Config.get("anomaly_val_out"), default_out,
+            self.browse_anomaly_val_out)
+        vl.addLayout(row)
+
+        self.btn_anomaly_validate = QPushButton(
+            Config.get("anomaly_start_validate"))
+        self.btn_anomaly_validate.setProperty("class", "ActionButton")
+        self.btn_anomaly_validate.clicked.connect(self.start_anomaly_validate)
+        vl.addWidget(self.btn_anomaly_validate)
+        layout.addWidget(val_group)
+
+        # ---- 验证结果(AUROC/阈值/热力图路径) ----
+        self.anomaly_result_text = QTextEdit()
+        self.anomaly_result_text.setReadOnly(True)
+        self.anomaly_result_text.setMinimumHeight(170)
+        self.anomaly_result_text.setPlaceholderText(
+            "AUROC / 建议阈值 / 分数分布(验证后显示)")
+        layout.addWidget(self.anomaly_result_text)
+
+        # ---- 区块三:导出 ONNX ----
+        exp_group = QGroupBox(Config.get("anomaly_export_group"))
+        el = QVBoxLayout(exp_group)
+        row, self.anomaly_onnx_edit = self._make_path_row(
+            Config.get("anomaly_onnx_out"), default_onnx,
+            self.browse_anomaly_onnx)
+        el.addLayout(row)
+
+        self.btn_anomaly_export = QPushButton(
+            Config.get("anomaly_start_export"))
+        self.btn_anomaly_export.setProperty("class", "ActionButton")
+        self.btn_anomaly_export.clicked.connect(self.start_anomaly_export)
+        el.addWidget(self.btn_anomaly_export)
+        layout.addWidget(exp_group)
+
+        layout.addStretch()
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+        return tab
+
+    def browse_anomaly_weights(self):
+        f, _ = QFileDialog.getOpenFileName(self, "Select Weights", "",
+                                           "Weights (*.pth)")
+        if f:
+            self.anomaly_weights_edit.setText(f)
+
+    def browse_anomaly_good_dir(self):
+        d = QFileDialog.getExistingDirectory(self, "Select Good Images Dir")
+        if d:
+            self.anomaly_good_edit.setText(d)
+
+    def browse_anomaly_bank_out(self):
+        f, _ = QFileDialog.getSaveFileName(self, "Bank Output", "",
+                                           "Bank (*.npz)")
+        if f:
+            self.anomaly_bank_out_edit.setText(f)
+
+    def browse_anomaly_bank(self):
+        f, _ = QFileDialog.getOpenFileName(self, "Select Bank", "",
+                                           "Bank (*.npz)")
+        if f:
+            self.anomaly_bank_edit.setText(f)
+
+    def browse_anomaly_tgood(self):
+        d = QFileDialog.getExistingDirectory(self, "Select Good Test Dir")
+        if d:
+            self.anomaly_tgood_edit.setText(d)
+
+    def browse_anomaly_tng(self):
+        d = QFileDialog.getExistingDirectory(self, "Select Defect Test Dir")
+        if d:
+            self.anomaly_tng_edit.setText(d)
+
+    def browse_anomaly_val_out(self):
+        d = QFileDialog.getExistingDirectory(self, "Select Result Output Dir")
+        if d:
+            self.anomaly_val_out_edit.setText(d)
+
+    def browse_anomaly_onnx(self):
+        f, _ = QFileDialog.getSaveFileName(self, "ONNX Output", "",
+                                           "ONNX (*.onnx)")
+        if f:
+            self.anomaly_onnx_edit.setText(f)
+
+    def _anomaly_params(self):
+        """当前异常检测页选中的 (骨干名, 权重路径)。"""
+        return (self.combo_anomaly_model.currentText().strip(),
+                self.anomaly_weights_edit.text().strip())
+
+    def start_anomaly_build(self):
+        model, weights = self._anomaly_params()
+        good = self.anomaly_good_edit.text().strip()
+        out = self.anomaly_bank_out_edit.text().strip()
+        if not weights or not os.path.isfile(weights):
+            self.log("请先选择有效的骨干权重 (.pth)")
+            return
+        if not good or not os.path.isdir(good):
+            self.log("请先选择有效的良品照片目录")
+            return
+        if not out:
+            self.log("请先设置特征库输出路径")
+            return
+        self.btn_anomaly_build.setEnabled(False)
+        self.anomaly_build_worker = AnomalyBuildWorker(
+            model, weights, "", good, out, self.spin_anomaly_bank.value(),
+            self.current_device)
+        self.anomaly_build_worker.log_signal.connect(self.log)
+        self.anomaly_build_worker.result_signal.connect(
+            lambda info: self.log(
+                f"建库完成:{info.get('patches_bank')} 条向量"
+                f"(原始 {info.get('patches_raw')},来自 {info.get('images')} 张图)"))
+        self.anomaly_build_worker.finished_signal.connect(
+            lambda: self.btn_anomaly_build.setEnabled(True))
+        self.anomaly_build_worker.start()
+
+    def start_anomaly_validate(self):
+        model, weights = self._anomaly_params()
+        bank = self.anomaly_bank_edit.text().strip()
+        tgood = self.anomaly_tgood_edit.text().strip()
+        tng = self.anomaly_tng_edit.text().strip()
+        out_dir = self.anomaly_val_out_edit.text().strip()
+        if not bank or not os.path.isfile(bank):
+            self.log("请先选择有效的特征库 (.npz)")
+            return
+        if not tgood and not tng:
+            self.log("良品验证目录与缺陷目录至少选择一个")
+            return
+        if not out_dir:
+            self.log("请先设置验证结果输出目录")
+            return
+        self.btn_anomaly_validate.setEnabled(False)
+        self.anomaly_result_text.setPlainText("验证中,请稍候 ...")
+        self.anomaly_validate_worker = AnomalyValidateWorker(
+            model, weights, "", bank, tgood, tng, out_dir,
+            self.current_device)
+        self.anomaly_validate_worker.log_signal.connect(self.log)
+        self.anomaly_validate_worker.result_signal.connect(
+            self.on_anomaly_result)
+        self.anomaly_validate_worker.finished_signal.connect(
+            lambda: self.btn_anomaly_validate.setEnabled(True))
+        self.anomaly_validate_worker.start()
+
+    def on_anomaly_result(self, lines):
+        """把验证摘要(AUROC/阈值/分数分布)显示到结果框。"""
+        self.anomaly_result_text.setPlainText("\n".join(lines))
+        self.log("异常检测验证完成,结果已显示;热力图在输出目录 heatmap/ 下。")
+
+    def start_anomaly_export(self):
+        model, weights = self._anomaly_params()
+        out = self.anomaly_onnx_edit.text().strip()
+        if not weights or not os.path.isfile(weights):
+            self.log("请先选择有效的骨干权重 (.pth)")
+            return
+        if not out:
+            self.log("请先设置 ONNX 输出路径")
+            return
+        self.btn_anomaly_export.setEnabled(False)
+        self.anomaly_export_worker = AnomalyExportWorker(
+            model, weights, "", out, self.current_device)
+        self.anomaly_export_worker.log_signal.connect(self.log)
+        self.anomaly_export_worker.finished_signal.connect(
+            lambda: self.btn_anomaly_export.setEnabled(True))
+        self.anomaly_export_worker.start()
 
     def create_benchmark_tab(self):
         tab = QWidget()
