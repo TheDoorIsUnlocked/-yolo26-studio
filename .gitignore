@@ -160,6 +160,7 @@ weights/
 # Bundled ONNX Runtime / numpy dependencies (do NOT track - large, regenerated)
 ortdeps/
 *.pt
+*.pth
 *.ts
 *.pb
 *.onnx
@@ -213,3 +214,6 @@ results.csv
 
 # Training dataset (images + labels, large; regenerate from source)
 /3631/
+/6171*
+/docs/DINVo3/bottles/
+/docs/DINVo3/anomaly/__pycache__/
