@@ -217,3 +217,9 @@ results.csv
 /6171*
 /docs/DINVo3/bottles/
 /docs/DINVo3/anomaly/__pycache__/
+
+# Anomaly detection generated artifacts (regenerable; consumed by C++ side, do NOT track)
+/models/
+/out/
+*.fbin
+*.npz
