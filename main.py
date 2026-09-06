@@ -2,6 +2,7 @@
 import sys
 import os
 import glob
+import datetime
 import multiprocessing
 import cv2
 
@@ -1175,6 +1176,12 @@ class MainWindow(QMainWindow):
         if not out:
             self.log("请先设置特征库输出路径")
             return
+        # 输出文件名追加 库容量+时间戳,避免多次建库互相覆盖(.fbin 同名跟随)
+        stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        stem, ext = os.path.splitext(out)
+        out = f"{stem}_{self.spin_anomaly_bank.value()}_{stamp}{ext or '.npz'}"
+        self.anomaly_bank_out_edit.setText(out)  # 回显实际产出路径
+        self.log(f"本次特征库输出:{out}")
         self.btn_anomaly_build.setEnabled(False)
         self.anomaly_build_worker = AnomalyBuildWorker(
             model, weights, "", good, out, self.spin_anomaly_bank.value(),
