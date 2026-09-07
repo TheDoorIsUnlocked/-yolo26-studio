@@ -23,7 +23,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from styles import Theme
 from workers import (VideoThread, ImageWorker, TrainWorker, VideoFileWorker,
-                     ExportWorker, ValWorker, BenchmarkWorker,
+                     ExportWorker, ValWorker, BenchmarkWorker, AugmentWorker,
                      AnomalyBuildWorker, AnomalyValidateWorker,
                      AnomalyExportWorker)
 from config import Config
@@ -735,35 +735,113 @@ class MainWindow(QMainWindow):
         data_layout.addWidget(btn_browse)
         form_layout.addLayout(data_layout)
         
-        # Hyperparams
+        # Hyperparams - 三个核心参数横排, 节省纵向空间
+        hp_layout = QHBoxLayout()
+        epochs_col = QVBoxLayout()
+        self.lbl_epochs = QLabel(Config.get("epochs"))
         self.spin_epochs = QSpinBox()
         self.spin_epochs.setRange(1, 1000)
         self.spin_epochs.setValue(100)
-        self.lbl_epochs = QLabel(Config.get("epochs"))
-        form_layout.addWidget(self.lbl_epochs)
-        form_layout.addWidget(self.spin_epochs)
-        
+        epochs_col.addWidget(self.lbl_epochs)
+        epochs_col.addWidget(self.spin_epochs)
+        hp_layout.addLayout(epochs_col)
+
+        batch_col = QVBoxLayout()
+        self.lbl_batch = QLabel(Config.get("batch"))
         self.spin_batch = QSpinBox()
         self.spin_batch.setRange(1, 512)
         self.spin_batch.setValue(16)
-        self.lbl_batch = QLabel(Config.get("batch"))
-        form_layout.addWidget(self.lbl_batch)
-        form_layout.addWidget(self.spin_batch)
-        
+        batch_col.addWidget(self.lbl_batch)
+        batch_col.addWidget(self.spin_batch)
+        hp_layout.addLayout(batch_col)
+
+        imgsz_col = QVBoxLayout()
+        self.lbl_imgsz = QLabel(Config.get("imgsz"))
         self.spin_imgsz = QSpinBox()
         self.spin_imgsz.setRange(32, 1280)
         self.spin_imgsz.setValue(640)
-        self.lbl_imgsz = QLabel(Config.get("imgsz"))
-        form_layout.addWidget(self.lbl_imgsz)
-        form_layout.addWidget(self.spin_imgsz)
-        
-        # Resume Checkbox
-        self.chk_resume = QCheckBox("Resume Training (from last.pt)")
-        form_layout.addWidget(self.chk_resume)
+        imgsz_col.addWidget(self.lbl_imgsz)
+        imgsz_col.addWidget(self.spin_imgsz)
+        hp_layout.addLayout(imgsz_col)
+        form_layout.addLayout(hp_layout)
 
+        # ---- 图像增强 (分组勾选框即总开关; 不勾选则直接用原数据集训练) ----
+        self.aug_group = QGroupBox(Config.get("aug_group"))
+        self.aug_group.setCheckable(True)
+        self.aug_group.setChecked(False)
+        aug_layout = QVBoxLayout()
+
+        # 第一行: 图像百分比 / 旋转步长 / 镜像
+        aug_row1 = QHBoxLayout()
+        pct_col = QVBoxLayout()
+        self.lbl_aug_percent = QLabel(Config.get("aug_percent"))
+        self.spin_aug_percent = QSpinBox()
+        self.spin_aug_percent.setRange(1, 100)
+        self.spin_aug_percent.setValue(100)
+        self.spin_aug_percent.setSuffix(" %")
+        pct_col.addWidget(self.lbl_aug_percent)
+        pct_col.addWidget(self.spin_aug_percent)
+        aug_row1.addLayout(pct_col)
+
+        step_col = QVBoxLayout()
+        self.lbl_aug_rot_step = QLabel(Config.get("aug_rot_step"))
+        self.combo_rot_step = QComboBox()
+        self.combo_rot_step.addItem(Config.get("aug_rot_off"), 0)
+        self.combo_rot_step.addItem("90°", 90)
+        self.combo_rot_step.addItem("180°", 180)
+        self.combo_rot_step.addItem("270°", 270)
+        self.combo_rot_step.setCurrentIndex(1)              # 默认 90°
+        step_col.addWidget(self.lbl_aug_rot_step)
+        step_col.addWidget(self.combo_rot_step)
+        aug_row1.addLayout(step_col)
+
+        mirror_col = QVBoxLayout()
+        self.lbl_aug_mirror = QLabel(Config.get("aug_mirror"))
+        self.combo_mirror = QComboBox()
+        self.combo_mirror.addItem(Config.get("aug_mirror_none"), "none")
+        self.combo_mirror.addItem(Config.get("aug_mirror_h"), "horizontal")
+        self.combo_mirror.addItem(Config.get("aug_mirror_v"), "vertical")
+        self.combo_mirror.addItem(Config.get("aug_mirror_both"), "both")
+        self.combo_mirror.setCurrentIndex(2)                # 默认 垂直
+        mirror_col.addWidget(self.lbl_aug_mirror)
+        mirror_col.addWidget(self.combo_mirror)
+        aug_row1.addLayout(mirror_col)
+        aug_layout.addLayout(aug_row1)
+
+        # 5 个可独立开关的变换项
+        self.chk_brightness, self.spin_brightness, _row = self._make_aug_row(
+            Config.get("aug_brightness"), "[1,255]", 1, 255, 20)
+        aug_layout.addLayout(_row)
+        self.chk_brightness_pt, self.spin_brightness_pt, _row = self._make_aug_row(
+            Config.get("aug_brightness_pt"), "[1,255]", 1, 255, 20)
+        aug_layout.addLayout(_row)
+        self.chk_contrast, self.spin_contrast, _row = self._make_aug_row(
+            Config.get("aug_contrast"), "%", 0, 200, 20, " %")
+        aug_layout.addLayout(_row)
+        self.chk_saturation, self.spin_saturation, _row = self._make_aug_row(
+            Config.get("aug_saturation"), "%", 0, 200, 20, " %")
+        aug_layout.addLayout(_row)
+        self.chk_rot_range, self.spin_rot_range, _row = self._make_aug_row(
+            Config.get("aug_rot_range"), "°", 0, 45, 3, " °")
+        aug_layout.addLayout(_row)
+
+        self.lbl_aug_estimate = QLabel("")
+        self.lbl_aug_estimate.setStyleSheet("color: gray; font-size: 11px;")
+        aug_layout.addWidget(self.lbl_aug_estimate)
+        self.aug_group.setLayout(aug_layout)
+        form_layout.addWidget(self.aug_group)
+
+        # Resume / AMP 横排
+        opt_layout = QHBoxLayout()
+        self.chk_resume = QCheckBox("Resume Training (from last.pt)")
         self.chk_amp = QCheckBox("AMP - 自动混合精度加速 (GPU; 首次需联网下载校验模型)")
         self.chk_amp.setChecked(True)
-        form_layout.addWidget(self.chk_amp)
+        opt_layout.addWidget(self.chk_resume)
+        opt_layout.addWidget(self.chk_amp)
+        form_layout.addLayout(opt_layout)
+
+        self._connect_aug_signals()
+        self._update_aug_estimate()
         
         # Training Stats
         stats_group = QGroupBox("Training Status")
@@ -795,6 +873,52 @@ class MainWindow(QMainWindow):
         layout.addStretch()
         
         return tab
+
+    def _make_aug_row(self, chk_text, unit, lo, hi, default, suffix=""):
+        """构造增强面板中的一行: [checkbox][单位说明][spinbox]。
+
+        checkbox 未勾选时 spinbox 自动置灰, 避免误以为该参数已生效。
+        """
+        row = QHBoxLayout()
+        chk = QCheckBox(chk_text)
+        chk.setChecked(True)
+        row.addWidget(chk)
+        row.addWidget(QLabel(unit))
+        spin = QSpinBox()
+        spin.setRange(lo, hi)
+        spin.setValue(default)
+        if suffix:
+            spin.setSuffix(suffix)
+        spin.setEnabled(chk.isChecked())
+        chk.toggled.connect(spin.setEnabled)
+        row.addWidget(spin)
+        row.addStretch()
+        return chk, spin, row
+
+    def _connect_aug_signals(self):
+        """增强面板参数变化时刷新"预计生成数量"提示。"""
+        for w in (self.spin_aug_percent, self.spin_brightness, self.spin_brightness_pt,
+                  self.spin_contrast, self.spin_saturation, self.spin_rot_range):
+            w.valueChanged.connect(self._update_aug_estimate)
+        for c in (self.chk_brightness, self.chk_brightness_pt, self.chk_contrast,
+                  self.chk_saturation, self.chk_rot_range):
+            c.toggled.connect(self._update_aug_estimate)
+        self.combo_rot_step.currentIndexChanged.connect(self._update_aug_estimate)
+        self.combo_mirror.currentIndexChanged.connect(self._update_aug_estimate)
+
+    def _update_aug_estimate(self):
+        """估算每张原图会生成多少张变体, 与 AugmentWorker 的生成逻辑保持一致。"""
+        step = self.combo_rot_step.currentData() or 0
+        n = 0
+        n += 1 if (self.combo_mirror.currentData() or "none") != "none" else 0
+        n += len(range(step, 360, step)) if (step and 360 % step == 0) else 0
+        n += 1 if self.chk_rot_range.isChecked() else 0
+        n += 1 if self.chk_brightness.isChecked() else 0
+        n += 1 if self.chk_brightness_pt.isChecked() else 0
+        n += 1 if self.chk_contrast.isChecked() else 0
+        n += 1 if self.chk_saturation.isChecked() else 0
+        self.lbl_aug_estimate.setText(
+            f"预计每张原图生成 {n} 张变体; 输出到 <数据集名>_aug/ (含原图副本, 不改动原数据集)")
 
     def create_val_tab(self):
         tab = QWidget()
@@ -1516,6 +1640,23 @@ class MainWindow(QMainWindow):
         self.lbl_epochs.setText(Config.get("epochs"))
         self.lbl_batch.setText(Config.get("batch"))
         self.lbl_imgsz.setText(Config.get("imgsz"))
+        # 图像增强面板
+        if getattr(self, "aug_group", None):
+            self.aug_group.setTitle(Config.get("aug_group"))
+            self.lbl_aug_percent.setText(Config.get("aug_percent"))
+            self.lbl_aug_rot_step.setText(Config.get("aug_rot_step"))
+            self.lbl_aug_mirror.setText(Config.get("aug_mirror"))
+            self.combo_rot_step.setItemText(0, Config.get("aug_rot_off"))
+            self.combo_mirror.setItemText(0, Config.get("aug_mirror_none"))
+            self.combo_mirror.setItemText(1, Config.get("aug_mirror_h"))
+            self.combo_mirror.setItemText(2, Config.get("aug_mirror_v"))
+            self.combo_mirror.setItemText(3, Config.get("aug_mirror_both"))
+            self.chk_brightness.setText(Config.get("aug_brightness"))
+            self.chk_brightness_pt.setText(Config.get("aug_brightness_pt"))
+            self.chk_contrast.setText(Config.get("aug_contrast"))
+            self.chk_saturation.setText(Config.get("aug_saturation"))
+            self.chk_rot_range.setText(Config.get("aug_rot_range"))
+            self._update_aug_estimate()
         self.btn_train.setText(Config.get("start_train") if not self._training else Config.get("stop_train"))
         
         # Val
@@ -1846,30 +1987,82 @@ class MainWindow(QMainWindow):
             self.stop_training()
 
     def start_training(self):
-        model_path = self.train_model_edit.text()
+        """入口: 若启用了图像增强, 先跑增强, 完成后再用新数据集启动训练。"""
         data = self.train_data_edit.text()
-        epochs = self.spin_epochs.value()
-        batch = self.spin_batch.value()
-        imgsz = self.spin_imgsz.value()
-        resume = self.chk_resume.isChecked()
-        amp = self.chk_amp.isChecked()
-        
-        # Use globally selected device for training too, unless overridden? 
-        # For now let's use the CPU/GPU radio button selection or keep training specific?
-        # Let's use the general selection for consistency
-        device = self.current_device
-        
+
         # Reset stats
         self.lbl_train_time.setText("Duration: 00:00:00")
         self.lbl_train_speed.setText("Speed: Calculating...")
         self.lbl_train_eta.setText("ETA: Calculating...")
         self.lbl_train_end.setText("Est. Finish: Calculating...")
-        
-        self.train_worker = TrainWorker(model_path, data, epochs, batch, imgsz, device, resume=resume, amp=amp)
+
+        if getattr(self, "aug_group", None) and self.aug_group.isChecked():
+            self.log("[增强] 开始离线图像增强 ...")
+            self.btn_train.setEnabled(False)
+            self.train_progress.setRange(0, 0)          # 0,0 = 忙碌指示(来回滚动)
+            self.aug_worker = AugmentWorker(data, self._collect_aug_cfg())
+            self.aug_worker.log_signal.connect(self.log)
+            self.aug_worker.progress_signal.connect(self.update_aug_progress)
+            self.aug_worker.finished_signal.connect(self.on_aug_finished)
+            self.aug_worker.start()
+        else:
+            self._launch_training(data)
+
+    def _collect_aug_cfg(self):
+        """从增强面板收集配置, 传给 AugmentWorker。"""
+        return {
+            "percent": self.spin_aug_percent.value(),
+            "rot_step": self.combo_rot_step.currentData() or 0,
+            "mirror": self.combo_mirror.currentData() or "none",
+            "brightness": self.chk_brightness.isChecked(),
+            "brightness_val": self.spin_brightness.value(),
+            "brightness_pt": self.chk_brightness_pt.isChecked(),
+            "brightness_pt_val": self.spin_brightness_pt.value(),
+            "contrast": self.chk_contrast.isChecked(),
+            "contrast_val": self.spin_contrast.value(),
+            "saturation": self.chk_saturation.isChecked(),
+            "saturation_val": self.spin_saturation.value(),
+            "rot_range": self.chk_rot_range.isChecked(),
+            "rot_range_val": self.spin_rot_range.value(),
+        }
+
+    def update_aug_progress(self, cur, total):
+        if total > 0:
+            self.train_progress.setRange(0, total)
+            self.train_progress.setValue(cur)
+            self.train_progress.setFormat("增强中 %v/%m")
+
+    def on_aug_finished(self, new_yaml, stats):
+        """增强结束: 成功则用增强后数据集训练, 失败则取消并恢复界面。"""
+        self.btn_train.setEnabled(True)
+        self.train_progress.setFormat("Epoch %v/%m")
+        if not new_yaml:
+            self.log("[增强] 失败, 已取消本次训练")
+            self.train_progress.setRange(0, 100)
+            self.train_progress.setValue(0)
+            return
+        self.log(f"[增强] 完成 (原图 {stats.get('orig', 0)} + 新增 {stats.get('gen', 0)}), 开始训练")
+        self._launch_training(new_yaml)
+
+    def _launch_training(self, data_yaml):
+        """真正启动训练 (data_yaml 可能是原配置, 也可能是增强后的新配置)。"""
+        model_path = self.train_model_edit.text()
+        epochs = self.spin_epochs.value()
+        batch = self.spin_batch.value()
+        imgsz = self.spin_imgsz.value()
+        resume = self.chk_resume.isChecked()
+        amp = self.chk_amp.isChecked()
+
+        # Use globally selected device for training too, unless overridden?
+        # For now let's use the CPU/GPU radio button selection or keep training specific?
+        # Let's use the general selection for consistency
+        device = self.current_device
+
+        self.train_worker = TrainWorker(model_path, data_yaml, epochs, batch, imgsz, device, resume=resume, amp=amp)
         self.train_worker.log_signal.connect(self.log)
         self.train_worker.progress_signal.connect(self.update_train_progress)
         self.train_worker.finished_signal.connect(self.training_finished)
-        
+
         self.btn_train.setProperty("class", "SecondaryButton")
         self.btn_train.setText(Config.get("stop_train"))
         self.btn_train.style().unpolish(self.btn_train)

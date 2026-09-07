@@ -2,8 +2,11 @@ import cv2
 import time
 import datetime
 import os
+import random
+import shutil
 import numpy as np
 import sys
+import yaml
 
 # Add project root to sys.path (works on Windows & Linux)
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -730,6 +733,312 @@ class VideoFileWorker(QThread):
 
     def stop(self):
         self.is_running = False
+
+# ====================== 离线图像增强 (训练前预处理) ======================
+
+class AugmentWorker(QThread):
+    """离线图像增强: 读取数据集 -> 生成增强副本到新目录 -> 产出新的 data.yaml。
+
+    设计要点(重要):
+      * 原图与对应 label 原样**复制**到输出目录(自包含完整数据集),
+        增强副本追加在后; 用户的原始数据集文件绝不会被修改或覆盖。
+      * 只增强 train 集; val/test 原样复制, 避免验证集泄漏增强样本导致指标虚高。
+      * 几何变换(旋转/镜像)会同步变换 YOLO label; 颜色变换不影响 label。
+    """
+
+    log_signal = pyqtSignal(str)
+    progress_signal = pyqtSignal(int, int)          # (current, total)
+    finished_signal = pyqtSignal(str, dict)         # (new_yaml_path, stats)
+
+    IMG_EXTS = ('.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff', '.webp')
+
+    def __init__(self, data_yaml, cfg):
+        super().__init__()
+        self.data_yaml = data_yaml
+        self.cfg = dict(cfg or {})
+        self._stop = False
+
+    # ---------------- YOLO label 几何 ----------------
+    @staticmethod
+    def _yolo_to_corners(cx, cy, w, h, iw, ih):
+        """YOLO 归一化 (cx,cy,w,h) -> 4 个角点像素坐标。"""
+        x1 = (cx - w / 2.0) * iw
+        y1 = (cy - h / 2.0) * ih
+        x2 = (cx + w / 2.0) * iw
+        y2 = (cy + h / 2.0) * ih
+        return np.array([[x1, y1], [x2, y1], [x2, y2], [x1, y2]], dtype=np.float32)
+
+    @staticmethod
+    def _corners_to_yolo(corners, iw, ih):
+        """4 个角点像素坐标 -> YOLO 归一化 (cx,cy,w,h); 目标被裁出画面返回 None。"""
+        x_min, y_min = corners.min(axis=0)
+        x_max, y_max = corners.max(axis=0)
+        x_min = max(0.0, float(x_min))
+        y_min = max(0.0, float(y_min))
+        x_max = min(float(iw), float(x_max))
+        y_max = min(float(ih), float(y_max))
+        # 目标几乎被裁没了 -> 丢弃该框, 避免产生噪声标签
+        if (x_max - x_min) < 1.0 or (y_max - y_min) < 1.0:
+            return None
+        return ((x_min + x_max) / 2.0 / iw,
+                (y_min + y_max) / 2.0 / ih,
+                (x_max - x_min) / iw,
+                (y_max - y_min) / ih)
+
+    @staticmethod
+    def _load_labels(path):
+        """读取 YOLO txt: 每行 `cls cx cy w h`(归一化)。"""
+        rows = []
+        if not os.path.isfile(path):
+            return rows
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                p = line.strip().split()
+                if len(p) < 5:
+                    continue
+                try:
+                    rows.append((int(float(p[0])),
+                                 float(p[1]), float(p[2]),
+                                 float(p[3]), float(p[4])))
+                except ValueError:
+                    continue
+        return rows
+
+    @staticmethod
+    def _save_labels(path, rows):
+        with open(path, "w", encoding="utf-8") as f:
+            for cls, cx, cy, w, h in rows:
+                f.write(f"{int(cls)} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}\n")
+
+    # ---------------- 单类变换 ----------------
+    def _apply_rotate(self, img, labels, angle):
+        """旋转图像, 并用同一仿射矩阵变换 label 角点。"""
+        ih, iw = img.shape[:2]
+        M = cv2.getRotationMatrix2D((iw / 2.0, ih / 2.0), angle, 1.0)
+        out = cv2.warpAffine(img, M, (iw, ih), flags=cv2.INTER_LINEAR,
+                             borderMode=cv2.BORDER_REFLECT_101)
+        new = []
+        for cls, cx, cy, w, h in labels:
+            pts = self._yolo_to_corners(cx, cy, w, h, iw, ih)
+            ones = np.ones((4, 1), dtype=np.float32)
+            moved = (M @ np.hstack([pts, ones]).T).T
+            yolo = self._corners_to_yolo(moved, iw, ih)
+            if yolo:
+                new.append((cls,) + yolo)
+        return out, new
+
+    @staticmethod
+    def _apply_flip(img, labels, code):
+        """code: 1=水平, 0=垂直, -1=水平+垂直。label 只需镜像中心点。"""
+        out = cv2.flip(img, code)
+        new = []
+        for cls, cx, cy, w, h in labels:
+            ncx, ncy = cx, cy
+            if code in (1, -1):
+                ncx = 1.0 - cx
+            if code in (0, -1):
+                ncy = 1.0 - cy
+            new.append((cls, ncx, ncy, w, h))
+        return out, new
+
+    @staticmethod
+    def _apply_brightness(img, delta):
+        return cv2.convertScaleAbs(img, alpha=1.0, beta=float(delta))
+
+    @staticmethod
+    def _apply_contrast(img, percent):
+        return cv2.convertScaleAbs(img, alpha=1.0 + float(percent) / 100.0, beta=0)
+
+    @staticmethod
+    def _apply_saturation(img, percent):
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.float32)
+        hsv[:, :, 1] = np.clip(hsv[:, :, 1] * (1.0 + float(percent) / 100.0), 0, 255)
+        return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+    # ---------------- 变体生成 ----------------
+    def _make_variants(self, img, labels):
+        """按配置生成变体: {文件名后缀: (图, labels)}。
+
+        颜色类变换随机取正/负方向, 让样本分布更对称。
+        """
+        out = {}
+
+        # 镜像
+        m = str(self.cfg.get("mirror", "none") or "none").lower()
+        if m in ("horizontal", "h"):
+            out["mirror_h"] = self._apply_flip(img, labels, 1)
+        elif m in ("vertical", "v"):
+            out["mirror_v"] = self._apply_flip(img, labels, 0)
+        elif m in ("both", "b"):
+            out["mirror_b"] = self._apply_flip(img, labels, -1)
+
+        # 旋转步长: 90 -> 90/180/270; 180 -> 180; 0 -> 不生成
+        step = int(self.cfg.get("rot_step", 0) or 0)
+        if step > 0 and 360 % step == 0:
+            for ang in range(step, 360, step):
+                out[f"rot{ang}"] = self._apply_rotate(img, labels, ang)
+
+        # 旋转范围: 随机 ±range
+        if self.cfg.get("rot_range", False):
+            r = float(self.cfg.get("rot_range_val", 0) or 0)
+            if r > 0:
+                out["rotr"] = self._apply_rotate(img, labels, random.uniform(-r, r))
+
+        # 亮度 (随机 ±)
+        if self.cfg.get("brightness", False):
+            d = float(self.cfg.get("brightness_val", 0) or 0)
+            if d:
+                out["bright"] = (self._apply_brightness(img, random.choice([-d, d])), list(labels))
+
+        # 亮度变化点 (固定取正向, 作为第二档亮度)
+        if self.cfg.get("brightness_pt", False):
+            d = float(self.cfg.get("brightness_pt_val", 0) or 0)
+            if d:
+                out["brightpt"] = (self._apply_brightness(img, d), list(labels))
+
+        # 对比度 (随机 ±)
+        if self.cfg.get("contrast", False):
+            p = float(self.cfg.get("contrast_val", 0) or 0)
+            if p:
+                out["contrast"] = (self._apply_contrast(img, random.choice([-p, p])), list(labels))
+
+        # 饱和度 (随机 ±)
+        if self.cfg.get("saturation", False):
+            p = float(self.cfg.get("saturation_val", 0) or 0)
+            if p:
+                out["satur"] = (self._apply_saturation(img, random.choice([-p, p])), list(labels))
+
+        return out
+
+    # ---------------- 主流程 ----------------
+    def run(self):
+        stats = {"orig": 0, "gen": 0, "skipped": 0, "out_dir": ""}
+        try:
+            with open(self.data_yaml, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+
+            yaml_dir = os.path.dirname(os.path.abspath(self.data_yaml))
+            base = data.get("path", "") or ""
+            root = base if os.path.isabs(base) else os.path.normpath(os.path.join(yaml_dir, base))
+
+            train_rel = data.get("train", "") or ""
+            if not train_rel:
+                raise RuntimeError("data.yaml 中缺少 train 字段")
+            src_img_dir = os.path.normpath(
+                train_rel if os.path.isabs(train_rel) else os.path.join(root, train_rel))
+            src_lbl_dir = src_img_dir.replace("images", "labels")
+            if not os.path.isdir(src_img_dir):
+                raise FileNotFoundError(f"训练集图片目录不存在: {src_img_dir}")
+
+            train_rel_in_root = os.path.relpath(src_img_dir, root)          # 如 train/images
+            out_root = root.rstrip("\\/") + "_aug"
+            out_img_dir = os.path.join(out_root, train_rel_in_root)
+            out_lbl_dir = out_img_dir.replace("images", "labels")
+            os.makedirs(out_img_dir, exist_ok=True)
+            os.makedirs(out_lbl_dir, exist_ok=True)
+            stats["out_dir"] = out_root
+
+            imgs = [f for f in sorted(os.listdir(src_img_dir))
+                    if f.lower().endswith(self.IMG_EXTS)]
+            total = len(imgs)
+            if total == 0:
+                raise RuntimeError(f"训练集目录中没有图片: {src_img_dir}")
+
+            self.log_signal.emit(f"[增强] 输出目录: {out_root}")
+            self.log_signal.emit(f"[增强] 训练集: {src_img_dir} ({total} 张), 标签: {src_lbl_dir}")
+
+            # ---- 1) 复制原图 + label (自包含; 原文件只读, 绝不改动) ----
+            self.log_signal.emit("[增强] 步骤 1/2: 复制原图与标签 ...")
+            for i, name in enumerate(imgs):
+                if self._stop:
+                    break
+                shutil.copy2(os.path.join(src_img_dir, name),
+                             os.path.join(out_img_dir, name))
+                stem = os.path.splitext(name)[0]
+                src_lbl = os.path.join(src_lbl_dir, stem + ".txt")
+                if os.path.isfile(src_lbl):
+                    shutil.copy2(src_lbl, os.path.join(out_lbl_dir, stem + ".txt"))
+                stats["orig"] += 1
+                if i % 50 == 0 or i == total - 1:
+                    self.progress_signal.emit(i + 1, total * 2)
+
+            # ---- 2) 生成增强副本 ----
+            if not self._stop:
+                percent = int(self.cfg.get("percent", 100) or 100)
+                pool = imgs if percent >= 100 else random.sample(
+                    imgs, max(1, int(round(total * percent / 100.0))))
+                self.log_signal.emit(
+                    f"[增强] 步骤 2/2: 生成增强副本 (对 {len(pool)}/{total} 张原图) ...")
+
+                for i, name in enumerate(pool):
+                    if self._stop:
+                        break
+                    stem, ext = os.path.splitext(name)
+                    img = cv2.imread(os.path.join(src_img_dir, name))
+                    if img is None:
+                        stats["skipped"] += 1
+                        continue
+                    labels = self._load_labels(os.path.join(src_lbl_dir, stem + ".txt"))
+                    for suffix, (vimg, vlbl) in self._make_variants(img, labels).items():
+                        cv2.imwrite(os.path.join(out_img_dir, f"{stem}_{suffix}{ext}"), vimg)
+                        self._save_labels(os.path.join(out_lbl_dir, f"{stem}_{suffix}.txt"), vlbl)
+                        stats["gen"] += 1
+                    if i % 20 == 0 or i == len(pool) - 1:
+                        self.progress_signal.emit(total + i + 1, total * 2)
+
+            # ---- 3) 原样复制 val/test (不增强, 避免验证集泄漏) ----
+            if not self._stop:
+                for key in ("val", "test"):
+                    rel = data.get(key, "") or ""
+                    if not rel:
+                        continue
+                    src = os.path.normpath(
+                        rel if os.path.isabs(rel) else os.path.join(root, rel))
+                    if not os.path.isdir(src):
+                        continue
+                    dst = os.path.join(out_root, os.path.relpath(src, root))
+                    os.makedirs(dst, exist_ok=True)
+                    n = 0
+                    for f in os.listdir(src):
+                        if f.lower().endswith(self.IMG_EXTS):
+                            shutil.copy2(os.path.join(src, f), os.path.join(dst, f))
+                            n += 1
+                    slbl, dlbl = src.replace("images", "labels"), dst.replace("images", "labels")
+                    if os.path.isdir(slbl):
+                        os.makedirs(dlbl, exist_ok=True)
+                        for f in os.listdir(slbl):
+                            if f.lower().endswith(".txt"):
+                                shutil.copy2(os.path.join(slbl, f), os.path.join(dlbl, f))
+                    self.log_signal.emit(f"[增强] 复制 {key} 集 {n} 张 (原样, 不增强)")
+
+            # ---- 4) 写出新的 data.yaml ----
+            new_yaml = os.path.join(yaml_dir, os.path.basename(out_root) + ".yaml")
+            new_data = dict(data)
+            # path 写绝对路径: YOLO 对相对 path 是按"当前工作目录"解析的
+            # (见 ultralytics/data/utils.py:604 check_det_dataset), 若程序从别的目录启动
+            # 会因找不到数据而报错, 故这里固定为绝对路径。
+            new_data["path"] = out_root.replace("\\", "/")
+            new_data["train"] = train_rel_in_root.replace("\\", "/")
+            for key in ("val", "test"):
+                if data.get(key):
+                    new_data[key] = os.path.relpath(
+                        os.path.join(root, data[key]), root).replace("\\", "/")
+            with open(new_yaml, "w", encoding="utf-8") as f:
+                yaml.safe_dump(new_data, f, allow_unicode=True, sort_keys=False)
+
+            self.log_signal.emit(f"[增强] 新配置: {new_yaml}")
+            self.log_signal.emit(
+                f"[增强] 完成: 原图 {stats['orig']} 张 + 新增 {stats['gen']} 张"
+                + (f" (跳过 {stats['skipped']} 张)" if stats["skipped"] else ""))
+            self.finished_signal.emit(new_yaml, stats)
+
+        except Exception as e:
+            self.log_signal.emit(f"[增强] 失败: {e}")
+            self.finished_signal.emit("", stats)
+
+    def stop(self):
+        self._stop = True
+
 
 class TrainWorker(QThread):
     log_signal = pyqtSignal(str)
