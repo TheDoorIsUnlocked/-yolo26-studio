@@ -79,7 +79,23 @@ class Config:
             "cpu_usage": "CPU Usage",
             "ram_usage": "RAM Usage",
             "gpu_usage": "GPU Usage",
-            "control_panel": "Control Panel"
+            "control_panel": "Control Panel",
+
+            # --- Image Augmentation (offline preprocessing before training) ---
+            "aug_group": "Image Augmentation",
+            "aug_percent": "Image Percentage",
+            "aug_rot_step": "Rotation Step",
+            "aug_rot_off": "Disabled",
+            "aug_mirror": "Mirror",
+            "aug_mirror_none": "None",
+            "aug_mirror_h": "Horizontal",
+            "aug_mirror_v": "Vertical",
+            "aug_mirror_both": "Both",
+            "aug_brightness": "Brightness Change",
+            "aug_brightness_pt": "Brightness Change Point",
+            "aug_contrast": "Contrast Change",
+            "aug_saturation": "Saturation Change",
+            "aug_rot_range": "Rotation Range"
         },
         "CN": {
             "title": "YOLO26 AI视觉",
@@ -157,7 +173,23 @@ class Config:
             "cpu_usage": "CPU 使用率",
             "ram_usage": "内存 使用率",
             "gpu_usage": "GPU 使用率",
-            "control_panel": "控制面板"
+            "control_panel": "控制面板",
+
+            # --- 图像增强 (训练前的离线预处理) ---
+            "aug_group": "图像增强 (Augmentation)",
+            "aug_percent": "图像百分比",
+            "aug_rot_step": "旋转步长",
+            "aug_rot_off": "不启用",
+            "aug_mirror": "镜像",
+            "aug_mirror_none": "不启用",
+            "aug_mirror_h": "水平",
+            "aug_mirror_v": "垂直",
+            "aug_mirror_both": "水平+垂直",
+            "aug_brightness": "亮度变化",
+            "aug_brightness_pt": "亮度变化点",
+            "aug_contrast": "对比度变化",
+            "aug_saturation": "饱和度变化",
+            "aug_rot_range": "旋转范围"
         }
     }
 
