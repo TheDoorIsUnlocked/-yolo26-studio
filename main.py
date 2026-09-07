@@ -747,9 +747,8 @@ class MainWindow(QMainWindow):
         self.spin_epochs = QSpinBox()
         self.spin_epochs.setRange(1, 1000)
         self.spin_epochs.setValue(100)
-        self.spin_epochs.setFixedWidth(90)
         epochs_col.addWidget(self.lbl_epochs)
-        epochs_col.addWidget(self.spin_epochs)
+        epochs_col.addLayout(self._num_row(self.spin_epochs))
         hp_layout.addLayout(epochs_col)
 
         batch_col = QVBoxLayout()
@@ -757,9 +756,8 @@ class MainWindow(QMainWindow):
         self.spin_batch = QSpinBox()
         self.spin_batch.setRange(1, 512)
         self.spin_batch.setValue(16)
-        self.spin_batch.setFixedWidth(90)
         batch_col.addWidget(self.lbl_batch)
-        batch_col.addWidget(self.spin_batch)
+        batch_col.addLayout(self._num_row(self.spin_batch))
         hp_layout.addLayout(batch_col)
 
         imgsz_col = QVBoxLayout()
@@ -767,9 +765,8 @@ class MainWindow(QMainWindow):
         self.spin_imgsz = QSpinBox()
         self.spin_imgsz.setRange(32, 1280)
         self.spin_imgsz.setValue(640)
-        self.spin_imgsz.setFixedWidth(100)
         imgsz_col.addWidget(self.lbl_imgsz)
-        imgsz_col.addWidget(self.spin_imgsz)
+        imgsz_col.addLayout(self._num_row(self.spin_imgsz))
         hp_layout.addLayout(imgsz_col)
         hp_layout.addStretch(1)
         form_layout.addLayout(hp_layout)
@@ -788,9 +785,8 @@ class MainWindow(QMainWindow):
         self.spin_aug_percent.setRange(1, 100)
         self.spin_aug_percent.setValue(100)
         self.spin_aug_percent.setSuffix(" %")
-        self.spin_aug_percent.setFixedWidth(90)
         pct_col.addWidget(self.lbl_aug_percent)
-        pct_col.addWidget(self.spin_aug_percent)
+        pct_col.addLayout(self._num_row(self.spin_aug_percent))
         aug_row1.addLayout(pct_col)
 
         step_col = QVBoxLayout()
@@ -887,10 +883,36 @@ class MainWindow(QMainWindow):
         
         return tab
 
+    def _num_row(self, spin):
+        """把 QSpinBox 包成 [spin][−][+] 一行, 用明确的按钮代替原生箭头。
+
+        原生 QSpinBox 上下箭头在某些 Windows/高DPI/打包环境下命中测试失效,
+        点击无反应; 这里改用真实 QPushButton(命中区域大, 与样式/DPI 无关),
+        保证数字一定可以增减. 原生箭头保留, 能用的环境照样可用.
+        """
+        h = QHBoxLayout()
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(3)
+        btn_minus = QPushButton("−")
+        btn_plus = QPushButton("+")
+        for b in (btn_minus, btn_plus):
+            b.setProperty("class", "SecondaryButton")
+            b.setFixedSize(26, 26)
+            b.setToolTip("减少 / 增加")
+        btn_minus.clicked.connect(spin.stepDown)
+        btn_plus.clicked.connect(spin.stepUp)
+        h.addWidget(spin)
+        h.addWidget(btn_minus)
+        h.addWidget(btn_plus)
+        spin._num_plus = btn_plus      # 便于自动化测试定位显式按钮
+        spin._num_minus = btn_minus
+        return h
+
     def _make_aug_row(self, chk_text, unit, lo, hi, default, suffix=""):
-        """构造增强面板中的一行: [checkbox][单位说明][spinbox]。
+        """构造增强面板中的一行: [checkbox][单位说明][spinbox][−][+]。
 
         checkbox 未勾选时 spinbox 自动置灰, 避免误以为该参数已生效。
+        用明确的 −/+ 按钮代替原生箭头(原生箭头在部分环境下命中失效)。
         """
         row = QHBoxLayout()
         chk = QCheckBox(chk_text)
@@ -900,12 +922,11 @@ class MainWindow(QMainWindow):
         spin = QSpinBox()
         spin.setRange(lo, hi)
         spin.setValue(default)
-        spin.setFixedWidth(90)
         if suffix:
             spin.setSuffix(suffix)
         spin.setEnabled(chk.isChecked())
         chk.toggled.connect(spin.setEnabled)
-        row.addWidget(spin)
+        row.addLayout(self._num_row(spin))
         row.addStretch()
         return chk, spin, row
 
@@ -971,13 +992,13 @@ class MainWindow(QMainWindow):
         self.spin_val_batch.setRange(1, 512)
         self.spin_val_batch.setValue(16)
         form_layout.addWidget(QLabel(Config.get("batch")))
-        form_layout.addWidget(self.spin_val_batch)
+        form_layout.addLayout(self._num_row(self.spin_val_batch))
 
         self.spin_val_imgsz = QSpinBox()
         self.spin_val_imgsz.setRange(32, 1280)
         self.spin_val_imgsz.setValue(640)
         form_layout.addWidget(QLabel(Config.get("imgsz")))
-        form_layout.addWidget(self.spin_val_imgsz)
+        form_layout.addLayout(self._num_row(self.spin_val_imgsz))
 
         # Start
         self.btn_val = QPushButton(Config.get("start_val"))
@@ -1074,7 +1095,7 @@ class MainWindow(QMainWindow):
         self.spin_export_imgsz = QSpinBox()
         self.spin_export_imgsz.setRange(32, 1280)
         self.spin_export_imgsz.setValue(640)
-        imgsz_layout.addWidget(self.spin_export_imgsz)
+        imgsz_layout.addLayout(self._num_row(self.spin_export_imgsz))
         opts_layout.addLayout(imgsz_layout)
         
         # Checkboxes
@@ -1181,7 +1202,7 @@ class MainWindow(QMainWindow):
         self.spin_anomaly_bank = QSpinBox()
         self.spin_anomaly_bank.setRange(512, 262144)
         self.spin_anomaly_bank.setValue(16384)
-        srow.addWidget(self.spin_anomaly_bank)
+        srow.addLayout(self._num_row(self.spin_anomaly_bank))
         bl.addLayout(srow)
 
         row, self.anomaly_bank_out_edit = self._make_path_row(
@@ -1415,7 +1436,7 @@ class MainWindow(QMainWindow):
         self.spin_bench_imgsz.setRange(32, 1280)
         self.spin_bench_imgsz.setValue(640)
         form_layout.addWidget(QLabel(Config.get("imgsz")))
-        form_layout.addWidget(self.spin_bench_imgsz)
+        form_layout.addLayout(self._num_row(self.spin_bench_imgsz))
 
         # 基准测试格式选择（单格式测速，避免自动导出所有格式）
         form_layout.addWidget(QLabel("测试格式"))
