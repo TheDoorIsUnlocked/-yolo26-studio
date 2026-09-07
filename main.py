@@ -747,6 +747,7 @@ class MainWindow(QMainWindow):
         self.spin_epochs = QSpinBox()
         self.spin_epochs.setRange(1, 1000)
         self.spin_epochs.setValue(100)
+        self.spin_epochs.setFixedWidth(90)
         epochs_col.addWidget(self.lbl_epochs)
         epochs_col.addWidget(self.spin_epochs)
         hp_layout.addLayout(epochs_col)
@@ -756,6 +757,7 @@ class MainWindow(QMainWindow):
         self.spin_batch = QSpinBox()
         self.spin_batch.setRange(1, 512)
         self.spin_batch.setValue(16)
+        self.spin_batch.setFixedWidth(90)
         batch_col.addWidget(self.lbl_batch)
         batch_col.addWidget(self.spin_batch)
         hp_layout.addLayout(batch_col)
@@ -765,9 +767,11 @@ class MainWindow(QMainWindow):
         self.spin_imgsz = QSpinBox()
         self.spin_imgsz.setRange(32, 1280)
         self.spin_imgsz.setValue(640)
+        self.spin_imgsz.setFixedWidth(100)
         imgsz_col.addWidget(self.lbl_imgsz)
         imgsz_col.addWidget(self.spin_imgsz)
         hp_layout.addLayout(imgsz_col)
+        hp_layout.addStretch(1)
         form_layout.addLayout(hp_layout)
 
         # ---- 图像增强 (分组勾选框即总开关; 不勾选则直接用原数据集训练) ----
@@ -784,6 +788,7 @@ class MainWindow(QMainWindow):
         self.spin_aug_percent.setRange(1, 100)
         self.spin_aug_percent.setValue(100)
         self.spin_aug_percent.setSuffix(" %")
+        self.spin_aug_percent.setFixedWidth(90)
         pct_col.addWidget(self.lbl_aug_percent)
         pct_col.addWidget(self.spin_aug_percent)
         aug_row1.addLayout(pct_col)
@@ -796,6 +801,7 @@ class MainWindow(QMainWindow):
         self.combo_rot_step.addItem("180°", 180)
         self.combo_rot_step.addItem("270°", 270)
         self.combo_rot_step.setCurrentIndex(1)              # 默认 90°
+        self.combo_rot_step.setFixedWidth(80)
         step_col.addWidget(self.lbl_aug_rot_step)
         step_col.addWidget(self.combo_rot_step)
         aug_row1.addLayout(step_col)
@@ -808,9 +814,11 @@ class MainWindow(QMainWindow):
         self.combo_mirror.addItem(Config.get("aug_mirror_v"), "vertical")
         self.combo_mirror.addItem(Config.get("aug_mirror_both"), "both")
         self.combo_mirror.setCurrentIndex(2)                # 默认 垂直
+        self.combo_mirror.setFixedWidth(110)
         mirror_col.addWidget(self.lbl_aug_mirror)
         mirror_col.addWidget(self.combo_mirror)
         aug_row1.addLayout(mirror_col)
+        aug_row1.addStretch(1)
         aug_layout.addLayout(aug_row1)
 
         # 5 个可独立开关的变换项
@@ -892,6 +900,7 @@ class MainWindow(QMainWindow):
         spin = QSpinBox()
         spin.setRange(lo, hi)
         spin.setValue(default)
+        spin.setFixedWidth(90)
         if suffix:
             spin.setSuffix(suffix)
         spin.setEnabled(chk.isChecked())
