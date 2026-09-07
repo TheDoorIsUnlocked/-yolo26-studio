@@ -145,6 +145,13 @@ class Theme:
             padding: 4px;
             color: {c["TEXT_MAIN"]};
         }}
+        /* Hide native spinbox arrows (unreliable on some Windows/DPI setups);
+           explicit +/- QPushButton added by _num_row() is used instead. */
+        QSpinBox::up-button, QSpinBox::down-button,
+        QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
+            width: 0;
+            border: none;
+        }}
         QListWidget {{
             background-color: {c["INPUT_BG"]};
             border: 1px solid {c["BORDER"]};
