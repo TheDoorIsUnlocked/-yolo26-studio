@@ -29,6 +29,11 @@ from workers import (VideoThread, ImageWorker, TrainWorker, VideoFileWorker,
 from config import Config
 from val_report import build_markdown, build_json
 
+def _fmt_hms(seconds):
+    """秒 -> "H:MM:SS"(不足一天) 或 "D day, H:MM:SS"。"""
+    return str(datetime.timedelta(seconds=max(0, int(seconds))))
+
+
 def emoji_to_pixmap(emoji, size=48):
     """Render an emoji to a QPixmap."""
     pixmap = QPixmap(size, size)
@@ -2071,7 +2076,15 @@ class MainWindow(QMainWindow):
         self._training = True
         self.train_progress.setRange(0, epochs)
         self.train_progress.setValue(0)
+
+        # Duration/ETA/Est.Finish 改为每秒实时刷新(原来只在 epoch 边界更新一次)
+        if not hasattr(self, "train_timer"):
+            self.train_timer = QTimer(self)
+            self.train_timer.setInterval(1000)
+            self.train_timer.timeout.connect(self._tick_train_timer)
         self.train_worker.start()
+        self.train_timer.start()
+        self._tick_train_timer()          # 立即刷一次, 免得第一秒是空白
 
     def stop_training(self):
         if self.train_worker:
@@ -2079,6 +2092,58 @@ class MainWindow(QMainWindow):
             self.log("Stopping training...")
             self.btn_train.setEnabled(False)  # 防止重复点击
             self.btn_train.setText(Config.get("stop_train"))
+
+    def _tick_train_timer(self):
+        """每秒刷新 Duration / Speed / ETA / Est.Finish。
+
+        原先这些值只在 on_train_epoch_end 回调里更新, 导致一个 epoch 期间
+        (可能数分钟) 时间完全静止不动。这里改为按真实时钟 + 已完成 epoch 的
+        平均速度实时推算; 第一个 epoch 尚未结束时用 batch 进度外推。
+        """
+        w = getattr(self, "train_worker", None)
+        t0 = getattr(w, "t0", None)
+        if not t0:
+            return
+
+        now = datetime.datetime.now()
+        elapsed = (now - t0).total_seconds()
+        self.lbl_train_time.setText(f"Duration: {_fmt_hms(elapsed)}")
+
+        total = getattr(w, "total_epochs", 0) or 0
+        done = getattr(w, "epoch_done", 0) or 0
+        avg = getattr(w, "avg_epoch", 0.0) or 0.0
+
+        if avg > 0:
+            self.lbl_train_speed.setText(f"Speed: {avg:.2f} s/epoch")
+        else:
+            self.lbl_train_speed.setText("Speed: Calculating...")
+
+        eta = None
+        if total <= 0:
+            eta = None
+        elif done >= total:
+            eta = 0.0
+        elif avg > 0:
+            # 剩余 epoch 按平均速度估算, 再扣掉当前这个 epoch 已经跑掉的时间
+            last = getattr(w, "last_epoch_end", None)
+            cur = (now - last).total_seconds() if last else elapsed
+            eta = max(0.0, avg * (total - done) - cur)
+        else:
+            # 第一个 epoch 还没结束: 用 batch 进度外推
+            nb = getattr(w, "nb", 0) or 0
+            bi = getattr(w, "batch_i", 0) or 0
+            if nb > 0 and bi > 0:
+                done_f = done + bi / nb          # 以 epoch 为单位的浮点进度
+                if done_f > 0:
+                    eta = max(0.0, elapsed / done_f * total - elapsed)
+
+        if eta is None:
+            self.lbl_train_eta.setText("ETA: Calculating...")
+            self.lbl_train_end.setText("Est. Finish: Calculating...")
+        else:
+            self.lbl_train_eta.setText(f"ETA: {_fmt_hms(eta)}")
+            self.lbl_train_end.setText(
+                "Est. Finish: " + (now + datetime.timedelta(seconds=eta)).strftime("%H:%M:%S"))
 
     def training_finished(self):
         self.btn_train.setProperty("class", "ActionButton")
@@ -2088,8 +2153,16 @@ class MainWindow(QMainWindow):
         self.btn_train.setEnabled(True)
         self._training = False
         self.log("Training worker finished.")
+        # 停表并定格最终真实用时 / 完成时刻
+        if getattr(self, "train_timer", None):
+            self.train_timer.stop()
+        now = datetime.datetime.now()
+        t0 = getattr(getattr(self, "train_worker", None), "t0", None)
+        if t0:
+            self.lbl_train_time.setText(f"Duration: {_fmt_hms((now - t0).total_seconds())}")
         self.lbl_train_speed.setText("Speed: Finished")
         self.lbl_train_eta.setText("ETA: 00:00:00")
+        self.lbl_train_end.setText("Est. Finish: " + now.strftime("%H:%M:%S"))
 
     def update_train_progress(self, stats):
         # stats is now a dict
@@ -2103,11 +2176,8 @@ class MainWindow(QMainWindow):
             
             self.train_progress.setValue(epoch)
             self.train_progress.setFormat(f"Epoch {epoch}/{stats.get('total_epochs', '?')} - mAP50: {map50:.4f}")
-            
-            self.lbl_train_time.setText(f"Duration: {elapsed}")
-            self.lbl_train_speed.setText(f"Speed: {speed}")
-            self.lbl_train_eta.setText(f"ETA: {eta}")
-            self.lbl_train_end.setText(f"Est. Finish: {eta_ts}")
+            # 时间类显示统一交给 _tick_train_timer 按真实时钟每秒刷新
+            self._tick_train_timer()
         else:
             # Fallback for old signal format if any
             epoch = stats

@@ -1057,14 +1057,26 @@ class TrainWorker(QThread):
         self.amp = amp
         self.is_running = True
         self.start_time = None
-        
+
+        # 实时计时字段: 主线程 QTimer 每秒读取这些值, 让 Duration/ETA/Est.Finish
+        # 在一个 epoch 期间也能持续变化(否则这些值只在 epoch 边界跳一次)。
+        self.t0 = None               # 训练开始时刻 (datetime)
+        self.total_epochs = 0        # 总 epoch 数
+        self.epoch_done = 0          # 已完成 epoch 数
+        self.avg_epoch = 0.0         # 平均每个 epoch 耗时(秒)
+        self.last_epoch_end = None   # 上一个 epoch 结束时刻
+        self.batch_i = 0             # 当前 epoch 内已完成 batch 数
+        self.nb = 0                  # 每个 epoch 的总 batch 数
+
     def run(self):
         try:
             action = "Resuming" if self.resume else "Starting"
             self.log_signal.emit(f"{action} training with model: {self.model_path}")
             model = YOLO(self.model_path)
-            
+
             self.start_time = time.time()
+            self.t0 = datetime.datetime.now()
+            self.total_epochs = self.epochs
             
             # Add custom callback to capture logs
             def on_train_epoch_end(trainer):
@@ -1088,6 +1100,12 @@ class TrainWorker(QThread):
                 avg_time_per_epoch = elapsed / self.local_epoch_count
                 remaining_epochs = total_epochs - epoch
                 eta_seconds = avg_time_per_epoch * remaining_epochs
+
+                # 供主线程 QTimer 每秒实时计算 Duration/ETA/Est.Finish
+                self.epoch_done = self.local_epoch_count
+                self.avg_epoch = avg_time_per_epoch
+                self.last_epoch_end = datetime.datetime.now()
+                self.total_epochs = total_epochs
                 
                 # Format strings
                 elapsed_str = str(datetime.timedelta(seconds=int(elapsed)))
@@ -1110,6 +1128,19 @@ class TrainWorker(QThread):
                 self.log_signal.emit(f"Epoch {epoch}/{total_epochs} - mAP50: {map50:.4f} - ETA: {eta_str}")
                 self.progress_signal.emit(stats)
 
+            def on_train_batch_end(trainer):
+                """记录 epoch 内的 batch 进度。
+
+                第一个 epoch 还没跑完时尚无 avg_epoch, UI 可据此按 batch 比例外推 ETA。
+                这里只做两次整数赋值, 不影响训练速度。
+                """
+                try:
+                    self.batch_i = int(getattr(trainer, "batch", 0) or 0) + 1
+                    self.nb = int(getattr(trainer, "nb", 0) or 0)
+                except Exception:
+                    pass
+
+            model.add_callback("on_train_batch_end", on_train_batch_end)
             model.add_callback("on_train_epoch_end", on_train_epoch_end)
             
             results = model.train(
