@@ -214,6 +214,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(Config.get("title"))
+        # 运行时窗口图标(Emoji 渲染, 无需外部 .ico 资源)
+        self._app_icon = QIcon(emoji_to_pixmap("🎯", 256))
+        self.setWindowIcon(self._app_icon)
         self.resize(1280, 800)
         
         # State
@@ -896,8 +899,9 @@ class MainWindow(QMainWindow):
         btn_minus = QPushButton("−")
         btn_plus = QPushButton("+")
         for b in (btn_minus, btn_plus):
-            b.setProperty("class", "SecondaryButton")
-            b.setFixedSize(26, 26)
+            b.setProperty("class", "NumButton")   # 实底高对比样式, 透明描边看不清
+            b.setFixedSize(28, 28)
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.setToolTip("减少 / 增加")
         btn_minus.clicked.connect(spin.stepDown)
         btn_plus.clicked.connect(spin.stepUp)
@@ -2462,6 +2466,8 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     multiprocessing.freeze_support()
     app = QApplication(sys.argv)
+    # 任务栏/应用级图标与窗口一致
+    app.setWindowIcon(QIcon(emoji_to_pixmap("🎯", 256)))
     window = MainWindow()
     # 让窗口适配屏幕可用区域，避免窗口高于屏幕时底部日志栏被截断
     _avail = app.primaryScreen().availableGeometry()

@@ -136,6 +136,27 @@ class Theme:
             border-color: {c["PRIMARY"]};
             color: {c["PRIMARY"]};
         }}
+
+        /* Numeric stepper buttons ([−][+] next to spinbox): solid, high-contrast */
+        QPushButton[class="NumButton"] {{
+            background-color: {c["PRIMARY"]};
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            padding: 0;
+        }}
+        QPushButton[class="NumButton"]:hover {{
+            background-color: {c["PRIMARY_LIGHT"]};
+        }}
+        QPushButton[class="NumButton"]:pressed {{
+            background-color: {c["PRIMARY"]};
+        }}
+        QPushButton[class="NumButton"]:disabled {{
+            background-color: {c["BORDER"]};
+            color: {c["BG_SUB"]};
+        }}
         
         /* Inputs & Lists */
         QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox {{
