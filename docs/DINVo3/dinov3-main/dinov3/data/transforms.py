@@ -17,9 +17,7 @@ def make_interpolation_mode(mode_str: str) -> v2.InterpolationMode:
 
 
 class GaussianBlur(v2.RandomApply):
-    """
-    Apply Gaussian Blur to the PIL image.
-    """
+    """Apply Gaussian Blur to the PIL image."""
 
     def __init__(self, *, p: float = 0.5, radius_min: float = 0.1, radius_max: float = 2.0):
         # NOTE: torchvision is applying 1 - probability to return the original image
