@@ -1,12 +1,11 @@
-# -*- coding: utf-8 -*-
 import sys
-from PyQt5.QtWidgets import *
+
+from CameraParams_header import *
 from CamOperation_class import CameraOperation
 from MvCameraControl_class import *
 from MvErrorDefine_const import *
-from CameraParams_header import *
+from PyQt5.QtWidgets import *
 from PyUICBasicDemo import Ui_MainWindow
-import ctypes
 
 
 # 获取选取设备信息的索引，通过[]之间的字符去解析
@@ -21,10 +20,10 @@ def TxtWrapBy(start_str, end, all):
 
 # 将返回的错误码转换为十六进制显示
 def ToHexStr(num):
-    chaDic = {10: 'a', 11: 'b', 12: 'c', 13: 'd', 14: 'e', 15: 'f'}
+    chaDic = {10: "a", 11: "b", 12: "c", 13: "d", 14: "e", 15: "f"}
     hexStr = ""
     if num < 0:
-        num = num + 2 ** 32
+        num = num + 2**32
     while num >= 16:
         digit = num % 16
         hexStr = chaDic.get(digit, str(digit)) + hexStr
@@ -34,7 +33,6 @@ def ToHexStr(num):
 
 
 if __name__ == "__main__":
-
     # ch:初始化SDK | en: initialize SDK
     MvCamera.MV_CC_Initialize()
 
@@ -60,26 +58,24 @@ if __name__ == "__main__":
 
     # Decoding Characters
     def decoding_char(ctypes_char_array):
-        """
-        安全地从 ctypes 字符数组中解码出字符串。
-        适用于 Python 2.x 和 3.x，以及 32/64 位环境。
+        """安全地从 ctypes 字符数组中解码出字符串。 适用于 Python 2.x 和 3.x，以及 32/64 位环境。.
         """
         byte_str = memoryview(ctypes_char_array).tobytes()
-        
+
         # 在第一个空字符处截断
-        null_index = byte_str.find(b'\x00')
+        null_index = byte_str.find(b"\x00")
         if null_index != -1:
             byte_str = byte_str[:null_index]
-        
+
         # 多编码尝试解码
-        for encoding in ['gbk', 'utf-8', 'latin-1']:
+        for encoding in ["gbk", "utf-8", "latin-1"]:
             try:
                 return byte_str.decode(encoding)
             except UnicodeDecodeError:
                 continue
-        
+
         # 如果所有编码都失败，使用替换策略
-        return byte_str.decode('latin-1', errors='replace')
+        return byte_str.decode("latin-1", errors="replace")
 
     # ch:枚举相机 | en:enum devices
     def enum_devices():
@@ -87,8 +83,9 @@ if __name__ == "__main__":
         global obj_cam_operation
 
         deviceList = MV_CC_DEVICE_INFO_LIST()
-        n_layer_type = (MV_GIGE_DEVICE | MV_USB_DEVICE | MV_GENTL_CAMERALINK_DEVICE
-                        | MV_GENTL_CXP_DEVICE | MV_GENTL_XOF_DEVICE)
+        n_layer_type = (
+            MV_GIGE_DEVICE | MV_USB_DEVICE | MV_GENTL_CAMERALINK_DEVICE | MV_GENTL_CXP_DEVICE | MV_GENTL_XOF_DEVICE
+        )
         ret = MvCamera.MV_CC_EnumDevices(n_layer_type, deviceList)
         if ret != 0:
             strError = "Enum devices fail! ret = :" + ToHexStr(ret)
@@ -101,7 +98,7 @@ if __name__ == "__main__":
         print("Find %d devices!" % deviceList.nDeviceNum)
 
         devList = []
-        for i in range(0, deviceList.nDeviceNum):
+        for i in range(deviceList.nDeviceNum):
             mvcc_dev_info = cast(deviceList.pDeviceInfo[i], POINTER(MV_CC_DEVICE_INFO)).contents
             if mvcc_dev_info.nTLayerType == MV_GIGE_DEVICE or mvcc_dev_info.nTLayerType == MV_GENTL_GIGE_DEVICE:
                 print("\ngige device: [%d]" % i)
@@ -110,14 +107,28 @@ if __name__ == "__main__":
                 print("device user define name: " + user_defined_name)
                 print("device model name: " + model_name)
 
-                nip1 = ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0xff000000) >> 24)
-                nip2 = ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x00ff0000) >> 16)
-                nip3 = ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x0000ff00) >> 8)
-                nip4 = (mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x000000ff)
+                nip1 = (mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0xFF000000) >> 24
+                nip2 = (mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x00FF0000) >> 16
+                nip3 = (mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x0000FF00) >> 8
+                nip4 = mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x000000FF
                 print("current ip: %d.%d.%d.%d " % (nip1, nip2, nip3, nip4))
                 devList.append(
-                    "[" + str(i) + "]GigE: " + user_defined_name + " " + model_name + "(" + str(nip1) + "." + str(
-                        nip2) + "." + str(nip3) + "." + str(nip4) + ")")
+                    "["
+                    + str(i)
+                    + "]GigE: "
+                    + user_defined_name
+                    + " "
+                    + model_name
+                    + "("
+                    + str(nip1)
+                    + "."
+                    + str(nip2)
+                    + "."
+                    + str(nip3)
+                    + "."
+                    + str(nip4)
+                    + ")"
+                )
             elif mvcc_dev_info.nTLayerType == MV_USB_DEVICE:
                 print("\nu3v device: [%d]" % i)
                 user_defined_name = decoding_char(mvcc_dev_info.SpecialInfo.stUsb3VInfo.chUserDefinedName)
@@ -131,8 +142,9 @@ if __name__ == "__main__":
                         break
                     strSerialNumber = strSerialNumber + chr(per)
                 print("user serial number: " + strSerialNumber)
-                devList.append("[" + str(i) + "]USB: " + user_defined_name + " " + model_name
-                               + "(" + str(strSerialNumber) + ")")
+                devList.append(
+                    "[" + str(i) + "]USB: " + user_defined_name + " " + model_name + "(" + str(strSerialNumber) + ")"
+                )
             elif mvcc_dev_info.nTLayerType == MV_GENTL_CAMERALINK_DEVICE:
                 print("\nCML device: [%d]" % i)
                 user_defined_name = decoding_char(mvcc_dev_info.SpecialInfo.stCMLInfo.chUserDefinedName)
@@ -146,8 +158,9 @@ if __name__ == "__main__":
                         break
                     strSerialNumber = strSerialNumber + chr(per)
                 print("user serial number: " + strSerialNumber)
-                devList.append("[" + str(i) + "]CML: " + user_defined_name + " " + model_name
-                               + "(" + str(strSerialNumber) + ")")
+                devList.append(
+                    "[" + str(i) + "]CML: " + user_defined_name + " " + model_name + "(" + str(strSerialNumber) + ")"
+                )
             elif mvcc_dev_info.nTLayerType == MV_GENTL_CXP_DEVICE:
                 print("\nCXP device: [%d]" % i)
                 user_defined_name = decoding_char(mvcc_dev_info.SpecialInfo.stCXPInfo.chUserDefinedName)
@@ -161,8 +174,9 @@ if __name__ == "__main__":
                         break
                     strSerialNumber = strSerialNumber + chr(per)
                 print("user serial number: " + strSerialNumber)
-                devList.append("[" + str(i) + "]CXP: " + user_defined_name + " " + model_name
-                               + "(" + str(strSerialNumber) + ")")
+                devList.append(
+                    "[" + str(i) + "]CXP: " + user_defined_name + " " + model_name + "(" + str(strSerialNumber) + ")"
+                )
             elif mvcc_dev_info.nTLayerType == MV_GENTL_XOF_DEVICE:
                 print("\nXoF device: [%d]" % i)
                 user_defined_name = decoding_char(mvcc_dev_info.SpecialInfo.stXoFInfo.chUserDefinedName)
@@ -176,8 +190,9 @@ if __name__ == "__main__":
                         break
                     strSerialNumber = strSerialNumber + chr(per)
                 print("user serial number: " + strSerialNumber)
-                devList.append("[" + str(i) + "]XoF: " + user_defined_name + " " + model_name
-                               + "(" + str(strSerialNumber) + ")")
+                devList.append(
+                    "[" + str(i) + "]XoF: " + user_defined_name + " " + model_name + "(" + str(strSerialNumber) + ")"
+                )
 
         ui.ComboDevices.clear()
         ui.ComboDevices.addItems(devList)
@@ -190,12 +205,12 @@ if __name__ == "__main__":
         global obj_cam_operation
         global isOpen
         if isOpen:
-            QMessageBox.warning(mainWindow, "Error", 'Camera is Running!', QMessageBox.Ok)
+            QMessageBox.warning(mainWindow, "Error", "Camera is Running!", QMessageBox.Ok)
             return MV_E_CALLORDER
 
         nSelCamIndex = ui.ComboDevices.currentIndex()
         if nSelCamIndex < 0:
-            QMessageBox.warning(mainWindow, "Error", 'Please select a camera!', QMessageBox.Ok)
+            QMessageBox.warning(mainWindow, "Error", "Please select a camera!", QMessageBox.Ok)
             return MV_E_CALLORDER
 
         obj_cam_operation = CameraOperation(cam, deviceList, nSelCamIndex)
@@ -288,14 +303,13 @@ if __name__ == "__main__":
             QMessageBox.warning(mainWindow, "Error", strError, QMessageBox.Ok)
         else:
             print("Save image success")
-            
+
     def is_float(str):
         try:
             float(str)
             return True
         except ValueError:
             return False
-    
 
     # ch: 获取参数 | en:get param
     def get_param():
@@ -304,9 +318,9 @@ if __name__ == "__main__":
             strError = "Get param failed ret:" + ToHexStr(ret)
             QMessageBox.warning(mainWindow, "Error", strError, QMessageBox.Ok)
         else:
-            ui.edtExposureTime.setText("{0:.2f}".format(obj_cam_operation.exposure_time))
-            ui.edtGain.setText("{0:.2f}".format(obj_cam_operation.gain))
-            ui.edtFrameRate.setText("{0:.2f}".format(obj_cam_operation.frame_rate))
+            ui.edtExposureTime.setText(f"{obj_cam_operation.exposure_time:.2f}")
+            ui.edtGain.setText(f"{obj_cam_operation.gain:.2f}")
+            ui.edtFrameRate.setText(f"{obj_cam_operation.frame_rate:.2f}")
 
     # ch: 设置参数 | en:set param
     def set_param():
@@ -314,11 +328,11 @@ if __name__ == "__main__":
         exposure = ui.edtExposureTime.text()
         gain = ui.edtGain.text()
 
-        if is_float(frame_rate)!=True or is_float(exposure)!=True or is_float(gain)!=True:
+        if is_float(frame_rate) != True or is_float(exposure) != True or is_float(gain) != True:
             strError = "Set param failed ret:" + ToHexStr(MV_E_PARAMETER)
             QMessageBox.warning(mainWindow, "Error", strError, QMessageBox.Ok)
             return MV_E_PARAMETER
-        
+
         ret = obj_cam_operation.Set_parameter(frame_rate, exposure, gain)
         if ret != MV_OK:
             strError = "Set param failed ret:" + ToHexStr(ret)
