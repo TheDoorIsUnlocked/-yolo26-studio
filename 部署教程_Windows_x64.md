@@ -11,14 +11,15 @@
 
 ## 0. 适用平台
 
-| 项目 | 说明 |
-| --- | --- |
-| 系统 | Windows 10 / 11（64 位） |
-| Python | **3.12.x（64 位）** —— 由 Miniconda3 创建，必须是 x64，ARM 版 Windows 不在支持范围 |
-| GPU（可选） | NVIDIA 显卡（如 RTX 3050/3060/4060 等）；无独显也能跑（自动用 CPU） |
-| 网络 | 需要联网下载依赖（已配置国内镜像，见第 2 节） |
+| 项目        | 说明                                                                               |
+| ----------- | ---------------------------------------------------------------------------------- |
+| 系统        | Windows 10 / 11（64 位）                                                           |
+| Python      | **3.12.x（64 位）** —— 由 Miniconda3 创建，必须是 x64，ARM 版 Windows 不在支持范围 |
+| GPU（可选） | NVIDIA 显卡（如 RTX 3050/3060/4060 等）；无独显也能跑（自动用 CPU）                |
+| 网络        | 需要联网下载依赖（已配置国内镜像，见第 2 节）                                      |
 
 **两种部署形态：**
+
 - **A. 源码运行（推荐）**：拷贝项目文件夹 + 装 Python 依赖，直接 `python main.py`。灵活、好调试、好升级。
 - **B. 打包成 EXE（可选）**：用 PyInstaller 打成单目录程序（见第 12 节）。适合给不懂 Python 的同事用，但体积大、CUDA 打包易踩坑。
 
@@ -29,7 +30,7 @@
 > 本项目**统一用 Miniconda3 管理运行环境**，不再单独装 Python。Miniconda 自带 `conda` 包管理器，能干净地隔离出 Python 3.12 环境，且对 PyTorch(CUDA) 这类体积大、依赖复杂的包更友好。
 
 1. 到 **清华大学开源镜像站** 下载 Miniconda3 安装包（比官网快很多）：
-   https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/ 
+   https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/
    选文件名形如 `Miniconda3-latest-Windows-x86_64.exe`（**必须是 x86_64 / 64 位**）。
    （需要的话也可从官网 https://www.anaconda.com/download 下载，但国内建议用镜像站。）
 2. 双击运行安装：
@@ -70,6 +71,7 @@ pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn
 ```
 
 > pip 其它可选国内源（任选其一，把 2.2 的 URL 替换即可）：
+>
 > - 阿里云：`https://mirrors.aliyun.com/pypi/simple/`
 > - 中科大：`https://pypi.mirrors.ustc.edu.cn/simple/`
 > - 腾讯云：`https://mirrors.cloud.tencent.com/pypi/simple/`
@@ -93,6 +95,7 @@ conda activate yolo
 激活后，后续所有 `pip` / `python` 都作用在这个隔离的 `yolo` 环境里，不会影响系统或其它项目。
 
 > 常用命令：
+>
 > - 查看所有环境：`conda env list`
 > - 退出当前环境：`conda deactivate`
 > - 删除环境（如需重来）：`conda remove -n yolo --all -y`
@@ -155,21 +158,22 @@ pip install -r requirements-Windows.txt
 
 把开发机上的项目文件夹整体拷贝到目标机（U 盘 / 内网共享 / `scp` / `git clone` 均可）。**必须包含的**：
 
-| 文件 / 目录 | 作用 |
-| --- | --- |
-| `main.py` `workers.py` `config.py` `styles.py` `val_report.py` `build.py` | 主程序与各模块 |
-| `ultralytics/` | **本地 ultralytics 源码，必须带！** 否则程序起不来 |
-| `rfdetr_adapter.py` | RF-DETR 数据集适配器（**要用 RF-DETR 就必须带**，见第 15 节） |
-| `Python/` | 海康威视相机 SDK（`MvImport`，Windows 专用，可选） |
-| `*.yaml` | 数据集 / 模型配置文件（如 `6171.yaml`） |
-| `*.pt` `*.onnx` | 你的模型权重文件 |
-| `weights/` | 若程序用到里面的模型 |
-| `requirements-Windows.txt` | 依赖清单 |
-| `smoke_test.py` `dl_weight.py` | 部署后自检脚本 / RF-DETR 权重预取脚本（可选但建议带） |
-| `requirements-rfdetr.txt` `constraints-torch.txt` | RF-DETR 可选依赖与 torch 约束文件（见第 15 节） |
-| `部署教程_Windows_x64.md` | 本教程 |
+| 文件 / 目录                                                               | 作用                                                          |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `main.py` `workers.py` `config.py` `styles.py` `val_report.py` `build.py` | 主程序与各模块                                                |
+| `ultralytics/`                                                            | **本地 ultralytics 源码，必须带！** 否则程序起不来            |
+| `rfdetr_adapter.py`                                                       | RF-DETR 数据集适配器（**要用 RF-DETR 就必须带**，见第 15 节） |
+| `Python/`                                                                 | 海康威视相机 SDK（`MvImport`，Windows 专用，可选）            |
+| `*.yaml`                                                                  | 数据集 / 模型配置文件（如 `6171.yaml`）                       |
+| `*.pt` `*.onnx`                                                           | 你的模型权重文件                                              |
+| `weights/`                                                                | 若程序用到里面的模型                                          |
+| `requirements-Windows.txt`                                                | 依赖清单                                                      |
+| `smoke_test.py` `dl_weight.py`                                            | 部署后自检脚本 / RF-DETR 权重预取脚本（可选但建议带）         |
+| `requirements-rfdetr.txt` `constraints-torch.txt`                         | RF-DETR 可选依赖与 torch 约束文件（见第 15 节）               |
+| `部署教程_Windows_x64.md`                                                 | 本教程                                                        |
 
 **可以跳过、不必拷贝**（占空间且可重新生成）：
+
 - `runs/`（训练/验证输出）、`__pycache__/`、`.git/`、`.workbuddy/`、`.trae/`
 - `models/`、`out/`（异常检测生成的特征库 / 验证结果，可重新生成）
 - `.rfdetr_models/`（RF-DETR 预训练权重缓存，349MB+，目标机会自动下载或用 `dl_weight.py` 预取）
@@ -200,18 +204,18 @@ python main.py
 
 程序启动后是一个 PyQt6 图形界面，左侧是功能标签页，共 **10 个**：
 
-| # | 标签页 | 用途 |
-| --- | --- | --- |
-| 1 | 实时检测 | 摄像头 / RTSP 实时推理 |
-| 2 | 图片 | 单张 / 批量图片推理 |
-| 3 | 视频 | 视频文件推理 |
-| 4 | 训练 | YOLO 训练（含离线图像增强） |
-| 5 | 验证 | 模型指标验证 |
-| 6 | 导出 | ONNX 等格式导出 |
-| 7 | **RF-DETR** | RF-DETR 训练 / 验证 / 导出（未装依赖时整页禁用并提示，见第 15 节） |
-| 8 | Benchmark | 性能基准测试 |
-| 9 | 异常检测 | DINOv3 特征建库 / 验证 / 导出 |
-| 10 | 设置 | 运行设备等全局配置 |
+| #   | 标签页      | 用途                                                               |
+| --- | ----------- | ------------------------------------------------------------------ |
+| 1   | 实时检测    | 摄像头 / RTSP 实时推理                                             |
+| 2   | 图片        | 单张 / 批量图片推理                                                |
+| 3   | 视频        | 视频文件推理                                                       |
+| 4   | 训练        | YOLO 训练（含离线图像增强）                                        |
+| 5   | 验证        | 模型指标验证                                                       |
+| 6   | 导出        | ONNX 等格式导出                                                    |
+| 7   | **RF-DETR** | RF-DETR 训练 / 验证 / 导出（未装依赖时整页禁用并提示，见第 15 节） |
+| 8   | Benchmark   | 性能基准测试                                                       |
+| 9   | 异常检测    | DINOv3 特征建库 / 验证 / 导出                                      |
+| 10  | 设置        | 运行设备等全局配置                                                 |
 
 窗口左上角和任务栏会显示 🎯 图标。
 
@@ -250,24 +254,24 @@ python smoke_test.py 6171.yaml yolo26n.pt 3 # 第三个参数是 epoch 数（默
 
 通过时会打印 `冒烟结果: 通过`，并给出训练产物目录、导出的 ONNX 与验证指标行数。
 
-| 检查项 | 说明 |
-| --- | --- |
-| UI 结构 | 10 个标签页、导航索引无错位、± 按钮齐备 |
-| 训练 | 1 epoch，产物 `runs/detect/train*/weights/best.pt` |
-| 导出 | ONNX，并用 ONNXRuntime 实际加载验证 |
-| 验证 | 结果表非空（P / R / mAP 等指标） |
-| RF-DETR | 未装依赖会跳过（属正常），不影响其余结论 |
+| 检查项  | 说明                                               |
+| ------- | -------------------------------------------------- |
+| UI 结构 | 10 个标签页、导航索引无错位、± 按钮齐备            |
+| 训练    | 1 epoch，产物 `runs/detect/train*/weights/best.pt` |
+| 导出    | ONNX，并用 ONNXRuntime 实际加载验证                |
+| 验证    | 结果表非空（P / R / mAP 等指标）                   |
+| RF-DETR | 未装依赖会跳过（属正常），不影响其余结论           |
 
 > 单次约 2~4 分钟（视显卡）。产物都在 `runs/` 下，已被 `.gitignore` 忽略，不污染仓库。
 > **注意**：自检只验证链路通，1 epoch 的 mAP 数值没有参考意义。
 
 **参考基准**（开发机 RTX 3050 Laptop 4GB，全程 2 分 12 秒）：
 
-| 阶段 | 实测 |
-| --- | --- |
-| 训练（1 epoch，511 张） | 86.6 秒，显存峰值 0.715G / 4G |
-| 导出 ONNX | 2.2 秒，9.4 MB，ONNXRuntime 可加载 |
-| 验证 | 23.2 秒，结果表 7 行（P / R / F1 / mAP@.5 / mAP@.5:.95 / mAP@.75 / Fitness） |
+| 阶段                    | 实测                                                                         |
+| ----------------------- | ---------------------------------------------------------------------------- |
+| 训练（1 epoch，511 张） | 86.6 秒，显存峰值 0.715G / 4G                                                |
+| 导出 ONNX               | 2.2 秒，9.4 MB，ONNXRuntime 可加载                                           |
+| 验证                    | 23.2 秒，结果表 7 行（P / R / F1 / mAP@.5 / mAP@.5:.95 / mAP@.75 / Fitness） |
 
 ---
 
@@ -282,22 +286,22 @@ python smoke_test.py 6171.yaml yolo26n.pt 3 # 第三个参数是 epoch 数（默
 
 ## 11. 常见问题排查
 
-| 现象 | 原因 | 解决办法 |
-| --- | --- | --- |
-| `torch.cuda.is_available()` 为 False | 装成了 CPU 版 torch | 按第 4.1 节重装 `+cu126` 版，重装前先 `pip uninstall torch torchvision` |
-| 导入 torch 报 DLL / 找不到模块 | NVIDIA 驱动过旧 | 更新显卡驱动到支持 CUDA 12.6 的版本（驱动 ≥ 560），**无需装 CUDA Toolkit** |
-| `No module named 'ultralytics'` | 没拷贝本地 `ultralytics/` 文件夹 | 把项目根目录的 `ultralytics/` 一起拷过来 |
-| `ImportError: attempted relative import` 或找不到本地模块 | 没在项目根目录运行 | `cd` 到项目根目录再 `python main.py` |
-| 界面起不来 / 黑屏 | PyQt6 缺系统运行库（少见，Windows 通常自带） | 安装 [Visual C++ 运行库](https://learn.microsoft.com/zh-CN/cpp/windows/latest-supported-vc-redist) |
-| 海康相机打不开 | 未装 MVS 或导入失败 | 见第 7 节；不影响其它功能 |
-| `pip install` 极慢 / 超时 | 没配国内源 | 重新执行第 2 节 `pip config set global.index-url` |
-| 实时检测卡顿 | 模型偏大 / 用 CPU 推理 | 改用轻量模型，或在程序内“运行设备”选 GPU；推理时调小 `imgsz` |
-| 数字框 −/+ 按钮点不动 | 旧版本 bug | 用最新代码（已加显式 ± 按钮并隐藏原生箭头） |
-| 「RF-DETR」标签页整页禁用 | 没装 rfdetr 依赖（设计如此，不影响其它功能） | 按第 15 节安装；不需要则忽略 |
-| `import cv2` 版本变成 5.0 / 报 cv2 相关错 | 装 RF-DETR 时 `roboflow` 拉入了 `opencv-python-headless`，顶掉了原 `cv2` | `pip uninstall -y opencv-python-headless` 后 `pip install --force-reinstall --no-deps opencv-python==4.12.0.88`（见 15.2） |
-| `import torch` 报 `ModuleNotFoundError: colorama / certifi / charset_normalizer` | site-packages 里有**空目录残骸**（程序运行时升级 pip 导致，会被当成命名空间包抢占导入） | 删掉空目录后重装：`pip install --force-reinstall --no-deps colorama certifi charset-normalizer attrs cycler` |
-| RF-DETR 首次训练卡在下载权重（几十分钟） | 权重源站在境外，约 230KB/s；且默认写 C 盘 | 先用 `python dl_weight.py nano` 多线程预取（见 15.2），或设 `RF_HOME` 指向非 C 盘 |
-| `smoke_test.py` 断言失败 | 环境或代码有问题 | 看失败那一步的打印；90% 是漏拷 `ultralytics/` 或数据集 yaml 路径不对 |
+| 现象                                                                             | 原因                                                                                    | 解决办法                                                                                                                   |
+| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `torch.cuda.is_available()` 为 False                                             | 装成了 CPU 版 torch                                                                     | 按第 4.1 节重装 `+cu126` 版，重装前先 `pip uninstall torch torchvision`                                                    |
+| 导入 torch 报 DLL / 找不到模块                                                   | NVIDIA 驱动过旧                                                                         | 更新显卡驱动到支持 CUDA 12.6 的版本（驱动 ≥ 560），**无需装 CUDA Toolkit**                                                 |
+| `No module named 'ultralytics'`                                                  | 没拷贝本地 `ultralytics/` 文件夹                                                        | 把项目根目录的 `ultralytics/` 一起拷过来                                                                                   |
+| `ImportError: attempted relative import` 或找不到本地模块                        | 没在项目根目录运行                                                                      | `cd` 到项目根目录再 `python main.py`                                                                                       |
+| 界面起不来 / 黑屏                                                                | PyQt6 缺系统运行库（少见，Windows 通常自带）                                            | 安装 [Visual C++ 运行库](https://learn.microsoft.com/zh-CN/cpp/windows/latest-supported-vc-redist)                         |
+| 海康相机打不开                                                                   | 未装 MVS 或导入失败                                                                     | 见第 7 节；不影响其它功能                                                                                                  |
+| `pip install` 极慢 / 超时                                                        | 没配国内源                                                                              | 重新执行第 2 节 `pip config set global.index-url`                                                                          |
+| 实时检测卡顿                                                                     | 模型偏大 / 用 CPU 推理                                                                  | 改用轻量模型，或在程序内“运行设备”选 GPU；推理时调小 `imgsz`                                                               |
+| 数字框 −/+ 按钮点不动                                                            | 旧版本 bug                                                                              | 用最新代码（已加显式 ± 按钮并隐藏原生箭头）                                                                                |
+| 「RF-DETR」标签页整页禁用                                                        | 没装 rfdetr 依赖（设计如此，不影响其它功能）                                            | 按第 15 节安装；不需要则忽略                                                                                               |
+| `import cv2` 版本变成 5.0 / 报 cv2 相关错                                        | 装 RF-DETR 时 `roboflow` 拉入了 `opencv-python-headless`，顶掉了原 `cv2`                | `pip uninstall -y opencv-python-headless` 后 `pip install --force-reinstall --no-deps opencv-python==4.12.0.88`（见 15.2） |
+| `import torch` 报 `ModuleNotFoundError: colorama / certifi / charset_normalizer` | site-packages 里有**空目录残骸**（程序运行时升级 pip 导致，会被当成命名空间包抢占导入） | 删掉空目录后重装：`pip install --force-reinstall --no-deps colorama certifi charset-normalizer attrs cycler`               |
+| RF-DETR 首次训练卡在下载权重（几十分钟）                                         | 权重源站在境外，约 230KB/s；且默认写 C 盘                                               | 先用 `python dl_weight.py nano` 多线程预取（见 15.2），或设 `RF_HOME` 指向非 C 盘                                          |
+| `smoke_test.py` 断言失败                                                         | 环境或代码有问题                                                                        | 看失败那一步的打印；90% 是漏拷 `ultralytics/` 或数据集 yaml 路径不对                                                       |
 
 ---
 
@@ -317,8 +321,9 @@ pyinstaller YOLO26_Studio.spec
 ```
 
 ⚠️ **注意**：
+
 - 打包 **torch + CUDA** 体积很大（数 GB），首次打包慢。
-- 需把 `ultralytics/` 本地源码、模型 `.pt`、`.yaml` 等一并打进 `datas`；CUDA 运行时也要随包携带。
+- 需把 `ultralytics/` 本地源码、模型 `.pt`、`.yaml` 等一并打进 `data`；CUDA 运行时也要随包携带。
 - 若只给同架构 Windows 用，建议在目标机直接跑源码（第 8 节）更省事、更好维护。
 
 ---
@@ -364,10 +369,10 @@ python dl_weight.py nano        # 预取权重到项目内，避免下到 C 盘
 
 ### 14.1 先确认你那台电脑是哪种部署形态
 
-| 形态 | 判断方法 | 升级方式 |
-| --- | --- | --- |
-| **A. git 克隆部署** | 项目根目录有 `.git/` 且当初是 `git clone` 下来的 | 直接 `git pull`（最省事，见 14.2） |
-| **B. 文件夹拷贝部署** | 当初是 U 盘 / 内网共享把文件夹整份拷过去的 | 手动同步程序文件（见 14.3，要小心别动数据） |
+| 形态                  | 判断方法                                         | 升级方式                                    |
+| --------------------- | ------------------------------------------------ | ------------------------------------------- |
+| **A. git 克隆部署**   | 项目根目录有 `.git/` 且当初是 `git clone` 下来的 | 直接 `git pull`（最省事，见 14.2）          |
+| **B. 文件夹拷贝部署** | 当初是 U 盘 / 内网共享把文件夹整份拷过去的       | 手动同步程序文件（见 14.3，要小心别动数据） |
 
 ### 14.2 方式 A：git 克隆部署 → 一条命令升级
 
@@ -388,25 +393,25 @@ python main.py
 
 **✅ 程序文件（可安全覆盖，来自开发机最新版）：**
 
-| 文件 / 目录 | 说明 |
-| --- | --- |
-| `main.py` `workers.py` `config.py` `styles.py` `val_report.py` `build.py` | 主程序与各模块 |
-| `ultralytics/` | **本地 ultralytics 源码，必须一起更新！** 它不是 pip 装的，漏更新会出现「函数找不到 / 行为不一致」 |
-| `requirements-Windows.txt` `部署教程_Windows_x64.md` | 依赖清单与教程 |
-| **`rfdetr_adapter.py`** | RF-DETR 数据集适配器（**本次新增，漏拷会导致 RF-DETR 页报 ImportError**） |
-| `smoke_test.py` `dl_weight.py` | 自检脚本 / 权重预取脚本（**本次新增**，建议一并拷） |
-| `requirements-rfdetr.txt` `constraints-torch.txt` | RF-DETR 依赖清单与 torch 约束文件（**本次新增**，装 RF-DETR 时才需要） |
-| 任何新增的 `.py` 模块 | 若有新文件也一并拷（如新增的增强/校验模块） |
+| 文件 / 目录                                                               | 说明                                                                                               |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `main.py` `workers.py` `config.py` `styles.py` `val_report.py` `build.py` | 主程序与各模块                                                                                     |
+| `ultralytics/`                                                            | **本地 ultralytics 源码，必须一起更新！** 它不是 pip 装的，漏更新会出现「函数找不到 / 行为不一致」 |
+| `requirements-Windows.txt` `部署教程_Windows_x64.md`                      | 依赖清单与教程                                                                                     |
+| **`rfdetr_adapter.py`**                                                   | RF-DETR 数据集适配器（**本次新增，漏拷会导致 RF-DETR 页报 ImportError**）                          |
+| `smoke_test.py` `dl_weight.py`                                            | 自检脚本 / 权重预取脚本（**本次新增**，建议一并拷）                                                |
+| `requirements-rfdetr.txt` `constraints-torch.txt`                         | RF-DETR 依赖清单与 torch 约束文件（**本次新增**，装 RF-DETR 时才需要）                             |
+| 任何新增的 `.py` 模块                                                     | 若有新文件也一并拷（如新增的增强/校验模块）                                                        |
 
 **🚫 数据文件（**绝对不要覆盖或删除**）：**
 
-| 文件 / 目录 | 说明 |
-| --- | --- |
+| 文件 / 目录                              | 说明                      |
+| ---------------------------------------- | ------------------------- |
 | `3631/` `6171/` `6171_*/` `6171_aug/` 等 | 你自己的图片 + 标注数据集 |
-| `*.pt` `*.onnx` | 模型权重（你训练/使用的） |
-| `*.yaml`（数据集类，如 `6171.yaml`） | 你自己的数据集配置 |
-| `weights/` `runs/` `out/` `models/` | 训练/验证输出与特征库 |
-| `Python/` `Hikvison/` | 海康 SDK（可选） |
+| `*.pt` `*.onnx`                          | 模型权重（你训练/使用的） |
+| `*.yaml`（数据集类，如 `6171.yaml`）     | 你自己的数据集配置        |
+| `weights/` `runs/` `out/` `models/`      | 训练/验证输出与特征库     |
+| `Python/` `Hikvison/`                    | 海康 SDK（可选）          |
 
 操作建议：在开发机上把上述「程序文件」单独打包（或用 `robocopy` 只同步这几个路径），拷到目标机对应目录覆盖；其余原样保留。
 
@@ -430,15 +435,15 @@ python main.py             # 界面能起、功能正常即可
 
 ### 14.6 升级常见坑
 
-| 现象 | 原因 | 解决 |
-| --- | --- | --- |
-| 升级后报 `AttributeError: ... 找不到某个函数/类` | 只更新了 `main.py`，漏了 `ultralytics/` 本地源码 | 把开发机最新的 `ultralytics/` 整个拷过去覆盖 |
-| 数据集 / 模型不见了 | 整文件夹删除重拷，覆盖了数据 | 以后只按 14.3 覆盖程序文件；数据用备份恢复 |
-| `pip install -r` 报 python 版本不兼容 | 旧环境是 Python 3.11 或更早 | 按第 1~3 节建 Python 3.12 的 conda 环境重装 |
-| 界面能起但增强功能异常 | 漏拷新增 `.py` 模块 | 把开发机最新版所有 `.py` 都同步过去 |
-| `ModuleNotFoundError: rfdetr_adapter` / RF-DETR 页点不动 | 漏拷新增的 `rfdetr_adapter.py`，或没装 rfdetr 依赖 | 拷入 `rfdetr_adapter.py`；要用就按第 15 节装依赖，不用则忽略该页 |
-| 升级后 `import cv2` 版本异常 / 报 cv2 错 | 装 RF-DETR 时 cv2 被 headless 版顶掉 | 见第 11 节排查表对应条目（卸载 headless + 重装 opencv-python 4.12.0.88） |
-| `git pull` 冲突 | 目标机本地改过代码 | 先 `git stash` 再 `pull`，或 `git checkout -- .` 放弃本地改动后 `pull` |
+| 现象                                                     | 原因                                               | 解决                                                                     |
+| -------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------ |
+| 升级后报 `AttributeError: ... 找不到某个函数/类`         | 只更新了 `main.py`，漏了 `ultralytics/` 本地源码   | 把开发机最新的 `ultralytics/` 整个拷过去覆盖                             |
+| 数据集 / 模型不见了                                      | 整文件夹删除重拷，覆盖了数据                       | 以后只按 14.3 覆盖程序文件；数据用备份恢复                               |
+| `pip install -r` 报 python 版本不兼容                    | 旧环境是 Python 3.11 或更早                        | 按第 1~3 节建 Python 3.12 的 conda 环境重装                              |
+| 界面能起但增强功能异常                                   | 漏拷新增 `.py` 模块                                | 把开发机最新版所有 `.py` 都同步过去                                      |
+| `ModuleNotFoundError: rfdetr_adapter` / RF-DETR 页点不动 | 漏拷新增的 `rfdetr_adapter.py`，或没装 rfdetr 依赖 | 拷入 `rfdetr_adapter.py`；要用就按第 15 节装依赖，不用则忽略该页         |
+| 升级后 `import cv2` 版本异常 / 报 cv2 错                 | 装 RF-DETR 时 cv2 被 headless 版顶掉               | 见第 11 节排查表对应条目（卸载 headless + 重装 opencv-python 4.12.0.88） |
+| `git pull` 冲突                                          | 目标机本地改过代码                                 | 先 `git stash` 再 `pull`，或 `git checkout -- .` 放弃本地改动后 `pull`   |
 
 ### 14.7 升级后一键自检
 
@@ -507,13 +512,13 @@ python dl_weight.py nano D:\cache  # 第二参数可指定其它目录
 
 各变体实测数据（体积为实测值，分辨率为该变体默认训练分辨率）：
 
-| 变体 | 权重体积 | 默认分辨率 | 适用显存 |
-| --- | --- | --- | --- |
-| Nano | 349 MB | 384 | **4 GB 够用**（实测峰值 1.02 GB） |
-| Small | 368 MB | 512 | 6 GB 起 |
-| Medium | 386 MB | 576 | 8 GB 起 |
-| Base | ⚠️ 官方源当前返回 403，暂不可下载 | 640 | — |
-| Large | 1499 MB | 704 | 16 GB 起（4GB 卡不必下） |
+| 变体   | 权重体积                          | 默认分辨率 | 适用显存                          |
+| ------ | --------------------------------- | ---------- | --------------------------------- |
+| Nano   | 349 MB                            | 384        | **4 GB 够用**（实测峰值 1.02 GB） |
+| Small  | 368 MB                            | 512        | 6 GB 起                           |
+| Medium | 386 MB                            | 576        | 8 GB 起                           |
+| Base   | ⚠️ 官方源当前返回 403，暂不可下载 | 640        | —                                 |
+| Large  | 1499 MB                           | 704        | 16 GB 起（4GB 卡不必下）          |
 
 > Base 的官方地址 `rf-detr-base.pth` 目前返回 HTTP 403（官方源问题，非本脚本问题）。
 > `python dl_weight.py base` 会明确报「源不可用」而不是写出损坏文件。
@@ -531,8 +536,8 @@ set RF_HOME=D:\apps\ultralytics-26_2\.rfdetr_models        # CMD
 
 官方 FAQ 说微调建议 ≥8GB，**实测远没有那么高**：
 
-| 显卡 | 显存 | 实测峰值 | 结论 |
-| --- | --- | --- | --- |
+| 显卡            | 显存 | 实测峰值                       | 结论                              |
+| --------------- | ---- | ------------------------------ | --------------------------------- |
 | RTX 3050 Laptop | 4 GB | **约 1.5 GB**（batch=2，Nano） | 够用，Nano 训练 1 epoch 约 135 秒 |
 
 默认参数已按低显存配置（Nano + batch 由程序按当前可用显存自动选为 2 + 关闭 EMA），
@@ -543,11 +548,11 @@ set RF_HOME=D:\apps\ultralytics-26_2\.rfdetr_models        # CMD
 显存开销主要由**物理 batch（一次送进显存的图片数）**决定；梯度累积只是多累加几步再更新，
 几乎不增加峰值。所以想加大等效 batch，**加梯度累积远比加 batch 划算**。
 
-| 物理 batch | 梯度累积 | 等效 batch | 显存峰值 | 结论 |
-| --- | --- | --- | --- | --- |
-| 4 | 4 | 16 | **2.47 GB** | 太紧，4GB 卡上极易崩，不要手动设 |
-| 2 | 8 | 16 | **1.50 GB** | **推荐**：GUI 的 auto 与手动「2」都落在这档，等效 batch 一样但省一半显存 |
-| 2 | 4 | 8 | 约 1.5 GB | 等效 batch 较小，小数据集够用，想更大就把梯度累积加到 8 |
+| 物理 batch | 梯度累积 | 等效 batch | 显存峰值    | 结论                                                                     |
+| ---------- | -------- | ---------- | ----------- | ------------------------------------------------------------------------ |
+| 4          | 4        | 16         | **2.47 GB** | 太紧，4GB 卡上极易崩，不要手动设                                         |
+| 2          | 8        | 16         | **1.50 GB** | **推荐**：GUI 的 auto 与手动「2」都落在这档，等效 batch 一样但省一半显存 |
+| 2          | 4        | 8          | 约 1.5 GB   | 等效 batch 较小，小数据集够用，想更大就把梯度累积加到 8                  |
 
 > ⚠️ **不要用 RF-DETR 自带的 `batch_size="auto"` 探测**：它会额外建 shadow 参数副本 + 跑 AdamW 的 `step()`，
 > 再用合成 batch 从大到小试到 OOM。在已被 Windows 桌面 + YOLO 推理模型占掉约 1.3GB 的 4GB 卡上，
@@ -561,12 +566,12 @@ set RF_HOME=D:\apps\ultralytics-26_2\.rfdetr_models        # CMD
 
 打开任务管理器看到的「GPU 显存」里，**大头根本不是训练程序**。实测顺序扣除如下：
 
-| 占用方 | 显存 | 说明 |
-| --- | --- | --- |
-| **Windows 桌面本身** | **约 1000 MB** | Explorer、Edge、输入法、豆包、ToDesk、WPS 等都在用 GPU 合成画面（nvidia-smi 里那一长串 `C+G` 进程）。**笔记本独显_shared 架构下这部分无法省掉** |
-| Python 的 CUDA 上下文 | **约 70 MB** | 只要 `import torch` 并建一个 CUDA 张量就有，无法省 |
-| YOLO 推理（载入模型 + 跑一次 640） | **约 100 MB** | 开了实时相机 / 图片 / 视频检测才会产生 |
-| **真正留给训练的** | **约 2.8 GB** | 这就是 batch=4 会崩、batch=2 能跑的原因 |
+| 占用方                             | 显存           | 说明                                                                                                                                             |
+| ---------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Windows 桌面本身**               | **约 1000 MB** | Explorer、Edge、输入法、豆包、ToDesk、WPS 等都在用 GPU 合成画面（nvidia-smi 里那一长串 `C+G` 进程）。**笔记本独显\_shared 架构下这部分无法省掉** |
+| Python 的 CUDA 上下文              | **约 70 MB**   | 只要 `import torch` 并建一个 CUDA 张量就有，无法省                                                                                               |
+| YOLO 推理（载入模型 + 跑一次 640） | **约 100 MB**  | 开了实时相机 / 图片 / 视频检测才会产生                                                                                                           |
+| **真正留给训练的**                 | **约 2.8 GB**  | 这就是 batch=4 会崩、batch=2 能跑的原因                                                                                                          |
 
 **界面本身只占一百多 MB，不用为它担心**；真正吃紧的是桌面那 1GB 固定开销。要最大化训练预算：
 
@@ -583,12 +588,12 @@ RF-DETR 原生只认「`<数据集根>/train/images` + `<数据集根>/train/lab
 但本程序的适配器（`rfdetr_adapter.py`）会**自动在两种常见写法间选择磁盘上真实存在的目录**，
 因此以下两种布局都能直接用，**无需手动改目录**：
 
-| 你的数据集布局 | 能否直接用 | 说明 |
-| --- | --- | --- |
-| `<根>/train/images` + `<根>/train/labels` | ✅ | split-first，RF-DETR 原生布局 |
-| `<根>/images/train` + `<根>/labels/train` | ✅ | images-first，适配器自动改映射到 `train/images` |
-| `4940_has_labled` | ✅ | 程序自动生成 `data.yaml` |
-| `3631` | ✅ | 适配器检测到 `images/train` 后自动改用 `train/images`，并在日志里提示一行 |
+| 你的数据集布局                            | 能否直接用 | 说明                                                                      |
+| ----------------------------------------- | ---------- | ------------------------------------------------------------------------- |
+| `<根>/train/images` + `<根>/train/labels` | ✅         | split-first，RF-DETR 原生布局                                             |
+| `<根>/images/train` + `<根>/labels/train` | ✅         | images-first，适配器自动改映射到 `train/images`                           |
+| `4940_has_labled`                         | ✅         | 程序自动生成 `data.yaml`                                                  |
+| `3631`                                    | ✅         | 适配器检测到 `images/train` 后自动改用 `train/images`，并在日志里提示一行 |
 
 程序会在数据集根目录生成 `data.yaml`（绝对路径），**不复制任何图片、不改动你的原始 yaml**。
 若 yaml 里写的路径（如 `images/train`）与磁盘实际布局不一致，适配器会自动选真实存在的目录并记一行日志。
@@ -601,29 +606,29 @@ RF-DETR 原生只认「`<数据集根>/train/images` + `<数据集根>/train/lab
 
 **RF-DETR 的默认值**（取自你安装的 `rfdetr/config.py` 的 `TrainConfig`）：
 
-| 参数 | 默认值 | 含义 |
-| --- | --- | --- |
-| `lr` | **1e-4** | 主学习率，管解码器 / head 等大部分参数；界面上的「学习率」框就是它 |
-| `lr_encoder` | 1.5e-4 | 主干 backbone 单独的学习率（界面未暴露，保持默认即可） |
-| `optimizer` | `adamw` | AdamW 优化器 |
-| `weight_decay` | 1e-4 | 权重衰减 |
-| `clip_max_norm` | 0.1 | 梯度裁剪，防止单步更新过猛 |
-| `warmup_epochs` | 0.0 | 默认**没有** warmup |
-| `lr_scheduler` / `lr_drop` | `step` / 100 | 默认第 100 轮才衰减 |
-| `lr_vit_layer_decay` | 0.8 | backbone 逐层递减 |
-| `lr_component_decay` | 0.7 | 模块级递减 |
+| 参数                       | 默认值       | 含义                                                               |
+| -------------------------- | ------------ | ------------------------------------------------------------------ |
+| `lr`                       | **1e-4**     | 主学习率，管解码器 / head 等大部分参数；界面上的「学习率」框就是它 |
+| `lr_encoder`               | 1.5e-4       | 主干 backbone 单独的学习率（界面未暴露，保持默认即可）             |
+| `optimizer`                | `adamw`      | AdamW 优化器                                                       |
+| `weight_decay`             | 1e-4         | 权重衰减                                                           |
+| `clip_max_norm`            | 0.1          | 梯度裁剪，防止单步更新过猛                                         |
+| `warmup_epochs`            | 0.0          | 默认**没有** warmup                                                |
+| `lr_scheduler` / `lr_drop` | `step` / 100 | 默认第 100 轮才衰减                                                |
+| `lr_vit_layer_decay`       | 0.8          | backbone 逐层递减                                                  |
+| `lr_component_decay`       | 0.7          | 模块级递减                                                         |
 
 界面里的学习率默认是 **1e-4**，与官方默认一致，**一般不用动**。
 
 **建议取值**：
 
-| 场景 | 建议 lr |
-| --- | --- |
-| RF-DETR 微调（常规） | **1e-4**（直接用默认值） |
-| 数据集很小 / 怕破坏预训练特征 | 5e-5 ~ 1e-4 |
-| loss 振荡、出现突刺或 NaN | 降到 5e-5，甚至 3e-5 |
-| 收敛太慢、epoch 又给足 | 可试 2e-4 |
-| 从头训（RF-DETR 很少这么用） | 2e-4 ~ 4e-4 |
+| 场景                          | 建议 lr                  |
+| ----------------------------- | ------------------------ |
+| RF-DETR 微调（常规）          | **1e-4**（直接用默认值） |
+| 数据集很小 / 怕破坏预训练特征 | 5e-5 ~ 1e-4              |
+| loss 振荡、出现突刺或 NaN     | 降到 5e-5，甚至 3e-5     |
+| 收敛太慢、epoch 又给足        | 可试 2e-4                |
+| 从头训（RF-DETR 很少这么用）  | 2e-4 ~ 4e-4              |
 
 **怎么判断合不合适**：直接看日志区的 loss 曲线 —— 忽高忽低来回跳 = 太大，降到 5e-5；
 几乎画成一条平线 = 太小，试 2e-4；平稳下降最后走平 = 刚好。
@@ -668,13 +673,13 @@ RF-DETR 原生只认「`<数据集根>/train/images` + `<数据集根>/train/lab
 
 ### 15.8 RF-DETR 常见问题
 
-| 现象 | 原因 | 解决 |
-| --- | --- | --- |
-| 页面顶部红色提示条「未检测到 rfdetr」 | 依赖未安装或导入失败 | 按 15.1 重装；重启程序 |
-| 训练报「找不到训练集图片目录」 | yaml 的 train/val 指向的路径在磁盘上确实不存在 | 检查 yaml 里 train 字段是否写对（适配器已自动兼容 `train/images` 与 `images/train` 两种写法，只有真的找不到目录才会报此错） |
-| 日志出现 `incorrect MD5 hash` 并重新下载权重 | 权重文件损坏（多线程下载时分片写入异常） | 已修：`dl_weight.py` 现在会校验 MD5；若仍损坏，删掉文件重跑脚本 |
-| `dl_weight.py base` 报「源不可用」 | 官方 `rf-detr-base.pth` 链接返回 403 | 换用 Nano / Small / Medium，或改用 `rf-detr-base-2.pth` |
-| 训练 OOM（显存不足） | 变体太大 / 物理 batch 手动设太大 | 换 Nano；batch 保持 `auto`（程序会自动选 2），或手动设 **2** 并把梯度累积加倍以保持等效 batch（见 15.3 实测）。**切勿手动设 4 及以上** |
+| 现象                                                                         | 原因                                                                                                                                                                                                                                                                                              | 解决                                                                                                                                                                                                                                              |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 页面顶部红色提示条「未检测到 rfdetr」                                        | 依赖未安装或导入失败                                                                                                                                                                                                                                                                              | 按 15.1 重装；重启程序                                                                                                                                                                                                                            |
+| 训练报「找不到训练集图片目录」                                               | yaml 的 train/val 指向的路径在磁盘上确实不存在                                                                                                                                                                                                                                                    | 检查 yaml 里 train 字段是否写对（适配器已自动兼容 `train/images` 与 `images/train` 两种写法，只有真的找不到目录才会报此错）                                                                                                                       |
+| 日志出现 `incorrect MD5 hash` 并重新下载权重                                 | 权重文件损坏（多线程下载时分片写入异常）                                                                                                                                                                                                                                                          | 已修：`dl_weight.py` 现在会校验 MD5；若仍损坏，删掉文件重跑脚本                                                                                                                                                                                   |
+| `dl_weight.py base` 报「源不可用」                                           | 官方 `rf-detr-base.pth` 链接返回 403                                                                                                                                                                                                                                                              | 换用 Nano / Small / Medium，或改用 `rf-detr-base-2.pth`                                                                                                                                                                                           |
+| 训练 OOM（显存不足）                                                         | 变体太大 / 物理 batch 手动设太大                                                                                                                                                                                                                                                                  | 换 Nano；batch 保持 `auto`（程序会自动选 2），或手动设 **2** 并把梯度累积加倍以保持等效 batch（见 15.3 实测）。**切勿手动设 4 及以上**                                                                                                            |
 | 点「开始训练」后立刻崩，日志最后只有 `Unhandled Python exception` 且没有堆栈 | **GUI 进程内直接跑 CUDA 训练**导致 C 层 abort（CUDA 上下文与 Qt 事件循环 / 常驻推理模型在同一进程内的线程/显存冲突）；`try/except` 与 `faulthandler` 都抓不到，故无堆栈。与 batch/分辨率/AMP/多尺度/数据无关（同一份训练在 CLI、后台线程、甚至带 YOLO 常驻显存下都 100% 跑通，唯独 GUI 进程内崩） | **已修复**：GUI 训练改为启动**子进程**跑 `train_rfdetr.py`（用 `sys.executable`，隔离出干净的 CUDA 上下文与显存池），日志/进度/停止照常转发。你无需任何操作；若仍看到此提示，先确认依赖为最新版（workers.py 的 `RFDETRTrainWorker` 已是子进程版） |
-| 权重下载卡住 | 源站在境外 | 用 `python dl_weight.py nano` 预取（见 15.2） |
-| 导出的 ONNX 在实时检测页加载失败 | RF-DETR 输出格式与 YOLO 不同（NMS-free，非缺陷） | 在外部 ONNXRuntime 自行后处理：`dets[1,300,4]` + `labels[1,300,2]` |
+| 权重下载卡住                                                                 | 源站在境外                                                                                                                                                                                                                                                                                        | 用 `python dl_weight.py nano` 预取（见 15.2）                                                                                                                                                                                                     |
+| 导出的 ONNX 在实时检测页加载失败                                             | RF-DETR 输出格式与 YOLO 不同（NMS-free，非缺陷）                                                                                                                                                                                                                                                  | 在外部 ONNXRuntime 自行后处理：`dets[1,300,4]` + `labels[1,300,2]`                                                                                                                                                                                |

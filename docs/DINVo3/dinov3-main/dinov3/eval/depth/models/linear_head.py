@@ -4,8 +4,8 @@
 # the terms of the DINOv3 License Agreement.
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 
 class LinearHead(nn.Module):
@@ -40,10 +40,12 @@ class LinearHead(nn.Module):
 
     def _transform_inputs(self, inputs):
         """Transform inputs for decoder.
+
         Args:
             inputs (list[Tensor]): List of multi-level img features.
+
         Returns:
-            Tensor: The transformed inputs
+            Tensor: The transformed inputs.
         """
         if "resize" in self.input_transform:
             inputs = [
@@ -59,13 +61,14 @@ class LinearHead(nn.Module):
         return inputs
 
     def _forward_feature(self, inputs):
-        """Forward function for feature maps before classifying each pixel with
-        ``self.cls_seg`` fc.
+        """Forward function for feature maps before classifying each pixel with ``self.cls_seg`` fc.
+
         Args:
             inputs (list[Tensor]): List of multi-level img features.
+
         Returns:
-            feats (Tensor): A tensor of shape (batch_size, self.channels,
-                H, W) which is feature map for last layer of decoder head.
+            feats (Tensor): A tensor of shape (batch_size, self.channels, H, W) which is feature map for last layer of
+                decoder head.
         """
         # accept lists (for cls token)
         inputs = list(inputs)
