@@ -223,3 +223,8 @@ results.csv
 /out/
 *.fbin
 *.npz
+
+# RF-DETR: training output & weight cache (regenerable, hundreds of MB)
+/rfdetr_smoke_out/
+/rfdetr_output/
+/.rfdetr_models/

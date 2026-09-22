@@ -1,0 +1,6 @@
+path: E:/yolo/ultralytics-26_2/4940_has_labled_aug
+train: train/images
+val: val/images
+test: test/images
+names:
+  0: 4940

@@ -1,0 +1,70 @@
+# =============================================================
+# RF-DETR 可选依赖清单（独立于主 requirements-Windows.txt）
+#
+# 说明：
+#   1. RF-DETR 是「可选功能」。未安装时程序正常启动，RF-DETR 标签页
+#      会显示安装提示并禁用按钮，其余功能完全不受影响。
+#   2. 必须用约束文件防止 torch 被换成 CPU 版：
+#        pip install -c constraints-torch.txt -r requirements-rfdetr.txt
+#   3. 依赖体积较大（会拉入 pytorch-lightning / transformers /
+#      roboflow / pycocotools 等），不需要 RF-DETR 的机器不必安装。
+#   4. 许可：Nano~Large 为 Apache 2.0（可商用）；
+#      XLarge / 2XLarge 需 rfdetr[plus]，为 PML 1.0，商用前需确认条款。
+#      本项目只开放 Nano / Small / Medium / Base / Large。
+# =============================================================
+
+# ---------- RF-DETR 本体（训练 + ONNX 导出） ----------
+rfdetr[train,onnx]>=1.10.1
+
+# ---------- 说明 ----------
+# 上面这一行会自动安装：
+#   核心:  torch>=2.2.0, torchvision>=0.17.0, transformers>=5.1,<6,
+#          supervision>=0.29, pydantic>=2,<3, requests, numpy, tqdm
+#   train: pytorch-lightning(!=2.6.2,!=2.6.3,<3,>=2.6), torchmetrics[detection],
+#          faster-coco-eval, pycocotools, scipy, torch-hungarian, roboflow, peft
+#   onnx:  onnx, onnxsim, onnx_graphsurgeon, polygraphy, onnxruntime
+#
+# 注意：本机 torch 为 2.9.1+cu126 / torchvision 0.24.1+cu126（CUDA 12.6），
+#       已满足 rfdetr 要求，装完请务必验证 torch.cuda.is_available() 仍为 True。
+
+# =============================================================
+# !! 装完必做：修复被 roboflow 顶掉的 cv2 !!
+# -------------------------------------------------------------
+# 坑：roboflow 依赖 opencv-python-headless，它和项目在用的
+#     opencv-python 抢同一个 cv2 模块，且会被装成 5.0.x（大版本跳跃，
+#     有破坏性 API 变更）。装完 rfdetr 后 cv2 会变成 headless 5.0。
+#
+# 验证：python -c "import cv2; print(cv2.__version__)"
+#       期望 4.12.0.88；若显示 5.0.0 说明被顶掉，执行下面两条修复：
+#
+#       pip uninstall -y opencv-python-headless
+#       pip install --force-reinstall --no-deps opencv-python==4.12.0.88
+#
+# 说明：卸载 headless 只影响 roboflow 的「从云端下载数据集」功能，
+#       我们用本地 YOLO 数据集（dataset_file="yolo"），完全用不到。
+# =============================================================
+
+# =============================================================
+# !! 权重下载：默认落在 C 盘，且国内速度极慢 !!
+# -------------------------------------------------------------
+# RF-DETR 首次实例化模型会自动下载预训练权重，默认缓存到
+#   C:\Users\<用户名>\.roboflow\models\
+# 两个问题：
+#   1) 占 C 盘。Nano 权重 349MB，Small/Medium 更大。
+#   2) 源是 storage.googleapis.com，国内实测单线程仅 ~230KB/s，
+#      RF-DETR 自带下载器更慢（50~90KB/s），349MB 要下 1 小时以上。
+#
+# 解决办法（本项目已在代码里内置）：
+#   * 设置环境变量 RF_HOME 把缓存重定向到项目所在盘：
+#       set RF_HOME=E:\rfdetr_models
+#     代码见 rfdetr_adapter.ensure_rf_home()，默认指向 <项目根>/.rfdetr_models
+#   * 用多线程分块下载器预取权重（8 线程可到 2.5MB/s 起步）：
+#       python dl_weight.py nano
+#     下载到 RF_HOME 目录并保持文件名 rf-detr-nano.pth，
+#     之后实例化会校验 MD5 并跳过下载。
+#
+# 权重 URL 与文件名映射（rfdetr/assets/model_weights.py）：
+#   nano   -> rf-detr-nano.pth    <- .../nano_coco/checkpoint_best_regular.pth
+#   small  -> rf-detr-small.pth   <- .../small_coco/checkpoint_best_regular.pth
+#   medium -> rf-detr-medium.pth  <- .../medium_coco/checkpoint_best_regular.pth
+# =============================================================

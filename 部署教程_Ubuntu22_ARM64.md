@@ -2,6 +2,10 @@
 
 本教程适用于在 **NVIDIA Jetson 开发板**（如 Jetson Orin Nano / Orin NX / AGX Orin）上部署本项目。
 
+> 最后更新：2026-09-16（补充自检脚本、RF-DETR 说明）
+> Windows x64 部署请看 `部署教程_Windows_x64.md`。本教程只覆盖 ARM64 特有的部分
+> （Jetson 专用 torch、Qt 依赖等），通用逻辑与 Windows 版一致。
+
 ## 0. 适用平台与版本对应关系
 
 | 项目 | 说明 |
@@ -193,3 +197,30 @@ print('detections:', len(r[0].boxes))
 ```
 
 能看到检测框数量输出，说明环境部署成功，可以启动界面正式使用了。
+
+## 12. 一键自检（可选，推荐）
+
+项目根目录的 `smoke_test.py` 在 Windows / Linux 上通用（offscreen 模式，不需要显示器），
+会跑一遍「UI 结构 → 训练 → 导出 → 验证」全链路：
+
+```bash
+cd /home/nvidia/ultralytics-26_2
+~/venv_yolo/bin/python smoke_test.py                        # 默认数据集与模型
+~/venv_yolo/bin/python smoke_test.py 6171.yaml yolo26n.pt   # 指定数据集 / 基础模型
+```
+
+打印 `冒烟结果: 通过` 即代表环境、代码、数据三者都配对。
+（Jetson 上训练较慢，1 epoch 可能要几分钟，属正常。）
+
+## 13. 关于 RF-DETR（ARM64 上**未验证**）
+
+Windows 版教程的第 15 节描述了 RF-DETR 训练 / 验证 / 导出功能。在 Jetson ARM64 上：
+
+| 项 | 状态 |
+| --- | --- |
+| YOLO 全部功能（训练 / 验证 / 导出 / 增强 / 异常检测） | ✅ 完全支持 |
+| RF-DETR 标签页 | ⚠️ **未安装依赖时会整页禁用并提示**，不影响其它功能 |
+| 在 ARM64 上装 `rfdetr` | ❓ 未实测。`rfdetr` 依赖 `roboflow` / `pytorch-lightning` / `transformers`，在 aarch64 上可能需自行编译，且会拉入 `opencv-python-headless` 顶替系统 `cv2`（Jetson 的 cv2 是带 GStreamer 的定制版，被覆盖后 **CSI 相机可能失效**） |
+
+**建议**：Jetson 上**不要装 RF-DETR**，保持 YOLO 链路即可。
+如果确实要试，务必先备份当前 `cv2`，并在独立的虚拟环境里安装，不要污染 `venv_yolo`。

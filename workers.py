@@ -6,6 +6,8 @@ import random
 import shutil
 import numpy as np
 import sys
+import re
+import subprocess
 import yaml
 
 # Add project root to sys.path (works on Windows & Linux)
@@ -1471,3 +1473,418 @@ class AnomalyExportWorker(QThread):
             self.log_signal.emit(f"导出失败:{e}")
         finally:
             self.finished_signal.emit()
+
+
+# ==========================================================================
+# RF-DETR（可选功能）
+# --------------------------------------------------------------------------
+# 设计要点：
+#   * rfdetr 是**可选依赖**，所有 import 都放在 run() 里（子线程执行），
+#     未安装时其余功能完全不受影响。
+#   * `import rfdetr` 实测约 22 秒（拉起 transformers/PL/supervision），
+#     绝不能在主线程做 —— UI 层的可用性探测走 find_spec（见 rfdetr_adapter）。
+#   * 训练进度用 PyTorch Lightning Callback 上报（on_train_epoch_end），
+#     不解析 stdout/tqdm —— 后者格式一变就崩。
+#   * 权重缓存目录由 ensure_rf_home() 重定向到项目所在盘，避免占 C 盘。
+# ==========================================================================
+
+# 变体名 -> rfdetr 顶层类名（XLarge/2XLarge 为 PML 1.0 许可，刻意不开放）
+RFDETR_VARIANTS = {
+    "Nano": "RFDETRNano",
+    "Small": "RFDETRSmall",
+    "Medium": "RFDETRMedium",
+    "Base": "RFDETRBase",
+    "Large": "RFDETRLarge",
+}
+
+
+class _LogEmitter:
+    """把 RF-DETR / PyTorch Lightning 的 stdout+stderr 按行转发到 Qt 信号。
+
+    tqdm 进度条用 \\r 而不是 \\n 刷行，所以 \\r 也按行边界处理，
+    否则进度条会把日志区刷爆。
+    """
+
+    def __init__(self, emit, on_line=None):
+        self._emit = emit
+        self._on_line = on_line   # 可选：逐行钩子，用于从日志里解析进度
+        self._buf = ""
+
+    def write(self, s):
+        if not s:
+            return 0
+        self._buf += s
+        while True:
+            # 同时兼容 \n 与 \r（tqdm）
+            i_n = self._buf.find("\n")
+            i_r = self._buf.find("\r")
+            idxs = [i for i in (i_n, i_r) if i >= 0]
+            if not idxs:
+                break
+            i = min(idxs)
+            line, self._buf = self._buf[:i], self._buf[i + 1:]
+            line = line.strip()
+            if line:
+                self._emit(line)
+                if self._on_line is not None:
+                    try:
+                        self._on_line(line)
+                    except Exception:
+                        pass
+        return len(s)
+
+    def flush(self):
+        if self._buf.strip():
+            line = self._buf.strip()
+            self._emit(line)
+            if self._on_line is not None:
+                try:
+                    self._on_line(line)
+                except Exception:
+                    pass
+            self._buf = ""
+
+    def isatty(self):
+        return False
+
+
+def _import_rfdetr_variant(variant: str):
+    """导入并返回指定变体类。variant 为 RFDETR_VARIANTS 的键（如 "Nano"）。"""
+    import rfdetr
+
+    cls_name = RFDETR_VARIANTS.get(variant)
+    if cls_name is None:
+        raise ValueError(f"未知 RF-DETR 变体: {variant}（可选: {list(RFDETR_VARIANTS)}）")
+    return getattr(rfdetr, cls_name)
+
+
+# 说明：RF-DETR 的 TrainConfig 是 pydantic 模型，**不接受** PyTorch Lightning
+# 的 callbacks 参数（传进去会报 "Unknown parameter(s): 'callbacks'"）。
+# 因此 epoch 进度改为在 RFDETRTrainWorker._on_log_line 里正则解析训练日志获得。
+
+
+class RFDETRTrainWorker(QThread):
+    """RF-DETR 训练（子进程隔离版）。
+
+    根因说明：RF-DETR 训练在「GUI 同一进程内」运行时，会在首个训练步（或更早的模型
+    构建阶段）触发无 traceback 的进程级硬崩，GUI 表现为 "Unhandled Python exception"。
+    经系统二分定位确认：
+
+      * 同一份训练在独立 Python 进程（CLI 同步/异步）、在后台 threading 线程、
+        甚至在「YOLO 推理模型常驻显存」的前提下跑，都 100% 正常完成；
+      * 唯独在 PyQt GUI 进程内崩溃，且崩溃点不固定、无 Python traceback、
+        faulthandler 也抓不到 → 属于 C 层 abort（CUDA 上下文与 Qt 事件循环 /
+        常驻推理模型在同一进程内的线程/显存冲突）。
+
+    因此这里的实现改为：在**独立子进程**里跑已经验证可用的 ``train_rfdetr.py``，
+    GUI 只负责流式读取子进程的标准输出、解析 epoch 进度、以及按需终止子进程。
+    这样既彻底隔离了 GUI 进程的 CUDA/Qt 冲突，又让训练拿到一块干净的显存池，
+    对外信号接口（log/progress/finished）与计时字段保持不变，主窗口逻辑无需改动。
+    """
+
+    log_signal = pyqtSignal(str)
+    progress_signal = pyqtSignal(dict)
+    finished_signal = pyqtSignal(bool, str)      # (是否成功, 说明)
+
+    def __init__(self, dataset_yaml, variant, epochs, batch_size, grad_accum_steps,
+                 lr, output_dir, resolution=None, resume=None, use_ema=False,
+                 num_workers=0, device=None, early_stopping=False,
+                 script_path=None):
+        super().__init__()
+        self.dataset_yaml = dataset_yaml
+        self.variant = variant
+        self.dataset_dir = None          # 由 run() 在启动子进程前填充，仅用于日志
+        self.epochs = epochs
+        self.batch_size = batch_size              # int（GUI 侧已把 auto 解析为具体整数）
+        self.grad_accum_steps = grad_accum_steps
+        self.lr = lr
+        self.output_dir = output_dir
+        self.resolution = resolution
+        self.resume = resume
+        self.use_ema = use_ema
+        self.num_workers = num_workers
+        self.device = device
+        self.early_stopping = early_stopping
+        self.script_path = script_path or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "train_rfdetr.py")
+
+        # 计时字段（主窗口 QTimer 每秒读取，用于 Duration/ETA/Est.Finish）
+        self.t0 = None
+        self.total_epochs = epochs
+        self.epoch_done = 0
+        self.batch_i = 0
+        self._stop_requested = False   # 必须在 __init__ 里初始化：
+                                       # stop() 可能早于 run() 被调用
+        self._proc = None
+
+    def stop(self):
+        """协作式停止：设置标志并终止子进程。"""
+        self._stop_requested = True
+        self.log_signal.emit("收到停止请求，正在终止训练子进程…")
+        if self._proc is not None and self._proc.poll() is None:
+            try:
+                self._proc.terminate()
+            except Exception:
+                pass
+
+    def _emit_progress(self, line: str):
+        """从训练日志里解析 epoch 进度并转发（形如「Val (Epoch 1/10) …」）。"""
+        try:
+            m = re.search(r"Epoch\s+(\d+)\s*/\s*(\d+)", line)
+            if not m:
+                return
+            ep, total = int(m.group(1)), int(m.group(2))
+            self.epoch_done = ep
+            self.progress_signal.emit({
+                "epoch": ep,
+                "total": total,
+                "elapsed": time.time() - (self.t0 or time.time()),
+            })
+        except Exception:
+            pass
+
+    def run(self):
+        self._stop_requested = False
+        self.t0 = time.time()
+
+        # 1) 数据集适配（生成 RF-DETR 用的 data.yaml，路径全部绝对化）
+        try:
+            from rfdetr_adapter import ensure_rf_home, prepare_rfdetr_dataset
+            ensure_rf_home()
+            info = prepare_rfdetr_dataset(self.dataset_yaml)
+            self.dataset_dir = info["dataset_dir"]
+            data_yaml = info["data_yaml"]
+            for _n in info.get("notes", []):
+                self.log_signal.emit("· " + str(_n))
+            self.log_signal.emit(
+                f"数据集就绪：{info['dataset_dir']}（{info['num_classes']} 类）")
+        except Exception as e:
+            self.log_signal.emit(f"数据集适配失败：{e}")
+            self.finished_signal.emit(False, str(e))
+            return
+
+        # 2) 组装与 train_rfdetr.py 完全一致的命令行
+        cmd = [
+            sys.executable, self.script_path,
+            "--data", data_yaml,
+            # 子进程脚本 train_rfdetr.py 的 --variant 只接受小写
+            # （nano/small/medium/base/large），GUI 下拉框值是首字母大写（Nano），需归一化
+            "--variant", str(self.variant).lower(),
+            "--epochs", str(self.epochs),
+            "--batch", str(self.batch_size),
+            "--grad-accum", str(self.grad_accum_steps),
+            "--lr", str(self.lr),
+        ]
+        out_parent = os.path.dirname(self.output_dir.rstrip(os.sep)) or "."
+        run_name = os.path.basename(self.output_dir.rstrip(os.sep))
+        cmd += ["--output", out_parent, "--run-name", run_name]
+        if self.resolution:
+            cmd += ["--resolution", str(self.resolution)]
+        if not self.use_ema:
+            cmd += ["--no-ema"]
+        if self.device:
+            cmd += ["--device", str(self.device)]
+        if self.resume:
+            cmd += ["--resume", str(self.resume)]
+        if self.early_stopping:
+            cmd += ["--early-stop"]
+
+        self.log_signal.emit(
+            "启动独立训练子进程（隔离 GUI 进程的 CUDA/线程冲突，避免闪退）…")
+        self.log_signal.emit("CMD: " + " ".join(cmd))
+
+        creationflags = 0
+        if sys.platform.startswith("win"):
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+        # 3) 启动子进程并流式转发输出
+        try:
+            self._proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                encoding="utf-8",
+                errors="replace",
+                cwd=os.path.dirname(os.path.abspath(self.script_path)),
+                creationflags=creationflags,
+            )
+        except Exception as e:
+            self.log_signal.emit(f"启动训练子进程失败：{e}")
+            self.finished_signal.emit(False, str(e))
+            return
+
+        epoch_re = re.compile(r"Epoch\s+(\d+)\s*/\s*(\d+)")
+        try:
+            for line in self._proc.stdout:
+                line = line.rstrip("\n").rstrip("\r")
+                if not line.strip():
+                    continue
+                self.log_signal.emit(line)
+                if epoch_re.search(line):
+                    self._emit_progress(line)
+                if self._stop_requested:
+                    self._proc.terminate()
+                    break
+        except Exception as e:
+            self.log_signal.emit(f"读取训练输出异常：{e}")
+
+        # 4) 等待子进程结束并汇报结果
+        try:
+            rc = self._proc.wait(timeout=60)
+        except Exception:
+            try:
+                self._proc.kill()
+            except Exception:
+                pass
+            rc = self._proc.wait()
+
+        if self._stop_requested:
+            self.log_signal.emit("已取消训练（子进程已终止）")
+            self.finished_signal.emit(False, "已取消")
+            return
+
+        if rc == 0:
+            self.finished_signal.emit(True, f"训练完成，产物目录: {self.output_dir}")
+        else:
+            self.log_signal.emit(f"训练子进程异常退出（返回码 {rc}）")
+            self.finished_signal.emit(False, f"训练失败，返回码 {rc}")
+
+
+class RFDETREvalWorker(QThread):
+    """RF-DETR 验证：加载 checkpoint 并在指定 split 上跑 COCO 评估。"""
+
+    log_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal(bool, str)
+    result_signal = pyqtSignal(dict)      # COCO 指标字典
+
+    def __init__(self, ckpt_path, dataset_dir, split="test", num_workers=0,
+                 batch_size=1, resolution=None, device=None):
+        super().__init__()
+        self.ckpt_path = ckpt_path
+        self.dataset_dir = dataset_dir
+        self.split = split
+        self.num_workers = num_workers
+        self.batch_size = batch_size
+        self.resolution = resolution
+        self.device = device
+
+    def run(self):
+        import contextlib
+
+        try:
+            try:
+                from rfdetr_adapter import ensure_rf_home
+                ensure_rf_home()
+            except Exception:
+                pass
+
+            self.log_signal.emit("正在导入 rfdetr（首次较慢，约 20 秒）…")
+            import rfdetr
+
+            self.log_signal.emit(f"加载权重: {self.ckpt_path}")
+            model = rfdetr.RFDETR.from_checkpoint(self.ckpt_path)
+
+            kwargs = dict(
+                dataset_dir=self.dataset_dir,
+                dataset_file="yolo",
+                split=self.split,
+                batch_size=self.batch_size,
+                num_workers=self.num_workers,
+            )
+            if self.resolution:
+                kwargs["resolution"] = self.resolution
+            if self.device:
+                kwargs["device"] = self.device
+
+            self.log_signal.emit(f"开始评估（split={self.split}）…")
+            emitter = _LogEmitter(self.log_signal.emit)
+            with contextlib.redirect_stdout(emitter), contextlib.redirect_stderr(emitter):
+                metrics = model.evaluate(**kwargs)
+            emitter.flush()
+
+            metrics = dict(metrics or {})
+            self.log_signal.emit("评估完成:")
+            for k, v in metrics.items():
+                try:
+                    self.log_signal.emit(f"  {k}: {float(v):.4f}")
+                except Exception:
+                    self.log_signal.emit(f"  {k}: {v}")
+            self.result_signal.emit(metrics)
+            self.finished_signal.emit(True, "评估完成")
+        except Exception as e:
+            import traceback
+            self.log_signal.emit("RF-DETR 验证失败:")
+            for ln in traceback.format_exc().splitlines()[-12:]:
+                self.log_signal.emit("  " + ln)
+            self.finished_signal.emit(False, str(e))
+
+
+class RFDETRExportWorker(QThread):
+    """RF-DETR 导出（本期仅 ONNX）。"""
+
+    log_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal(bool, str)
+    result_signal = pyqtSignal(str)       # 导出的 onnx 路径
+
+    def __init__(self, ckpt_path, output_dir, opset_version=17,
+                 resolution=None, batch_size=1, dynamic_batch=False,
+                 fp16=True):
+        super().__init__()
+        self.ckpt_path = ckpt_path
+        self.output_dir = output_dir
+        self.opset_version = opset_version
+        self.resolution = resolution
+        self.batch_size = batch_size
+        self.dynamic_batch = dynamic_batch
+        self.fp16 = fp16
+
+    def run(self):
+        import contextlib
+
+        try:
+            try:
+                from rfdetr_adapter import ensure_rf_home
+                ensure_rf_home()
+            except Exception:
+                pass
+
+            self.log_signal.emit("正在导入 rfdetr（首次较慢，约 20 秒）…")
+            import rfdetr
+
+            self.log_signal.emit(f"加载权重: {self.ckpt_path}")
+            model = rfdetr.RFDETR.from_checkpoint(self.ckpt_path)
+
+            kwargs = dict(
+                output_dir=self.output_dir,
+                format="onnx",
+                opset_version=self.opset_version,
+                batch_size=self.batch_size,
+                dynamic_batch=self.dynamic_batch,
+                fp16=self.fp16,
+                verbose=False,
+            )
+            if self.resolution:
+                # export 的 shape 是 (height, width)，且必须是 patch_size*num_windows 的倍数
+                kwargs["shape"] = (self.resolution, self.resolution)
+
+            self.log_signal.emit(
+                f"开始导出 ONNX | opset {self.opset_version} | "
+                f"shape {kwargs.get('shape', '默认')} | batch {self.batch_size}"
+            )
+            emitter = _LogEmitter(self.log_signal.emit)
+            with contextlib.redirect_stdout(emitter), contextlib.redirect_stderr(emitter):
+                path = model.export(**kwargs)
+            emitter.flush()
+
+            path_str = str(path)
+            self.log_signal.emit(f"导出完成: {path_str}")
+            self.result_signal.emit(path_str)
+            self.finished_signal.emit(True, path_str)
+        except Exception as e:
+            import traceback
+            self.log_signal.emit("RF-DETR 导出失败:")
+            for ln in traceback.format_exc().splitlines()[-12:]:
+                self.log_signal.emit("  " + ln)
+            self.finished_signal.emit(False, str(e))
