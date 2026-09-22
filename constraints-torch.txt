@@ -1,0 +1,13 @@
+# =============================================================
+# 安装 RF-DETR 时的依赖约束文件
+#
+# 目的：防止 pip 在解析 rfdetr 依赖时，从 PyPI 镜像拉取 **CPU 版**
+#       torch / torchvision，把本项目已装好的 CUDA 版本覆盖掉。
+#       rfdetr 声明 torch>=2.2.0，若无约束，pip 有可能为了满足某个
+#       传递依赖而重装 torch（装成 CPU 版，导致 torch.cuda 变 False）。
+#
+# 用法：pip install -c constraints-torch.txt "rfdetr[train,onnx]"
+# =============================================================
+
+torch==2.9.1+cu126
+torchvision==0.24.1+cu126

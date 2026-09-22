@@ -1,0 +1,8 @@
+path: "4940_has_labled"
+train: train/images
+val: val/images
+test: test/images
+
+#Classes
+names:
+  0: 4940

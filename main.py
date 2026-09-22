@@ -13,7 +13,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QH
                              QPushButton, QLabel, QFrame, QDockWidget, QComboBox,
                              QSlider, QGroupBox, QListWidget, QTextEdit, QTabWidget,
                              QFileDialog, QProgressBar, QSplitter, QScrollArea, QCheckBox, QSpinBox, QButtonGroup, QRadioButton, QToolButton, QSizePolicy,
-                             QTableWidget, QTableWidgetItem, QHeaderView)
+                             QTableWidget, QTableWidgetItem, QHeaderView,
+                             QLineEdit, QDoubleSpinBox, QFormLayout)
 from PyQt6.QtCore import Qt, QSize, pyqtSlot, QUrl, QTimer, QRect, QPoint, pyqtSignal
 from PyQt6.QtGui import QPixmap, QImage, QIcon, QAction, QShortcut, QKeySequence, QPainter, QFont, QColor, QWheelEvent
 from PyQt6.QtMultimedia import QMediaDevices
@@ -25,7 +26,12 @@ from styles import Theme
 from workers import (VideoThread, ImageWorker, TrainWorker, VideoFileWorker,
                      ExportWorker, ValWorker, BenchmarkWorker, AugmentWorker,
                      AnomalyBuildWorker, AnomalyValidateWorker,
-                     AnomalyExportWorker)
+                     AnomalyExportWorker,
+                     RFDETRTrainWorker, RFDETREvalWorker, RFDETRExportWorker,
+                     RFDETR_VARIANTS)
+from rfdetr_adapter import (rfdetr_available, rfdetr_missing_reason,
+                            prepare_rfdetr_dataset, RFDETRDatasetError,
+                            ensure_rf_home, suggest_rf_batch)
 from config import Config
 from val_report import build_markdown, build_json
 
@@ -301,9 +307,10 @@ class MainWindow(QMainWindow):
             ("📊", "train", 3),
             ("✅", "val", 4),
             ("📤", "export", 5),
-            ("📈", "benchmark", 6),
-            ("🔬", "anomaly", 7),
-            ("⚙️", "settings", 8)
+            ("🎯", "rfdetr", 6),
+            ("📈", "benchmark", 7),
+            ("🔬", "anomaly", 8),
+            ("⚙️", "settings", 9)
         ]
         
         for icon, key, idx in self.nav_items:
@@ -345,6 +352,7 @@ class MainWindow(QMainWindow):
         self.train_tab = self.create_train_tab()
         self.val_tab = self.create_val_tab()
         self.export_tab = self.create_export_tab()
+        self.rfdetr_tab = self.create_rfdetr_tab()
         self.benchmark_tab = self.create_benchmark_tab()
         self.anomaly_tab = self.create_anomaly_tab()
         self.settings_tab = QWidget() # Placeholder
@@ -362,6 +370,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(_scrollable(self.train_tab), "Train")
         self.tabs.addTab(self.val_tab, "Val")
         self.tabs.addTab(_scrollable(self.export_tab), "Export")
+        self.tabs.addTab(_scrollable(self.rfdetr_tab), "RF-DETR")
         self.tabs.addTab(_scrollable(self.benchmark_tab), "Benchmark")
         self.tabs.addTab(_scrollable(self.anomaly_tab), "Anomaly")
         self.tabs.addTab(self.settings_tab, "Settings")
@@ -1407,6 +1416,467 @@ class MainWindow(QMainWindow):
             lambda: self.btn_anomaly_export.setEnabled(True))
         self.anomaly_export_worker.start()
 
+    # ==================================================================
+    # RF-DETR（可选功能）
+    #
+    # 设计原则：
+    #   * 独立标签页，不触碰已跑通的 YOLO 训练/验证/导出链路。
+    #   * rfdetr 未安装时整页禁用并给出安装提示，其余功能照常。
+    #   * 可用探测走 find_spec（不真正 import，避免主线程卡顿 ~20s）。
+    # ==================================================================
+    def create_rfdetr_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(12)
+
+        self.rfdetr_ok = rfdetr_available()
+
+        # ---------- 未安装时的提示条 ----------
+        self.rfdetr_warn = QLabel()
+        self.rfdetr_warn.setWordWrap(True)
+        self.rfdetr_warn.setObjectName("SubLabel")
+        self.rfdetr_warn.setVisible(not self.rfdetr_ok)
+        if not self.rfdetr_ok:
+            self.rfdetr_warn.setText(Config.get("rfdetr_missing"))
+            self.rfdetr_warn.setStyleSheet(
+                "color: #D9534F; background: rgba(217,83,79,0.10); "
+                "padding: 8px; border-radius: 6px;")
+        layout.addWidget(self.rfdetr_warn)
+
+        # ================= 训练 =================
+        g_train = QGroupBox(Config.get("rfdetr_train_group"))
+        f_train = QFormLayout()
+        f_train.setSpacing(8)
+
+        # 模型变体
+        self.rf_variant = QComboBox()
+        self.rf_variant.addItems(list(RFDETR_VARIANTS.keys()))
+        self.rf_variant.setCurrentText("Nano")   # 4GB 显存默认最小变体
+        f_train.addRow(Config.get("rfdetr_variant"), self.rf_variant)
+
+        # 数据集 YAML
+        ds_row = QHBoxLayout()
+        self.rf_data = QLineEdit()
+        self.rf_data.setPlaceholderText("如 4940_has_labled.yaml")
+        btn_ds = QPushButton("...")
+        btn_ds.setFixedWidth(40)
+        btn_ds.clicked.connect(self._rf_browse_data)
+        ds_row.addWidget(self.rf_data)
+        ds_row.addWidget(btn_ds)
+        f_train.addRow(Config.get("rfdetr_data_yaml"), ds_row)
+
+        # 三个数字参数横排（epochs / batch / grad_accum），沿用 _num_row 保证可点
+        num_row = QHBoxLayout()
+        num_row.setSpacing(14)
+
+        self.rf_epochs = QSpinBox()
+        self.rf_epochs.setRange(1, 1000)
+        self.rf_epochs.setValue(50)
+        self.rf_epochs.setFixedWidth(90)
+
+        # batch_size：0 表示 "auto"（自动探测显存）
+        self.rf_batch = QSpinBox()
+        self.rf_batch.setRange(0, 64)
+        self.rf_batch.setValue(0)
+        self.rf_batch.setFixedWidth(90)
+        self.rf_batch.setSpecialValueText(Config.get("rfdetr_batch_auto"))
+        self.rf_batch.setToolTip("设为 0（auto）时由本程序按当前可用显存选一个安全整数批次；"
+                                 "注意：RF-DETR 自带的 auto 探测在 4GB 卡上会 OOM 硬崩，故不直接透传")
+
+        self.rf_grad = QSpinBox()
+        self.rf_grad.setRange(1, 64)
+        self.rf_grad.setValue(4)
+        self.rf_grad.setFixedWidth(90)
+
+        for label, spin in ((Config.get("rfdetr_epochs"), self.rf_epochs),
+                            (Config.get("rfdetr_batch"), self.rf_batch),
+                            (Config.get("rfdetr_grad_accum"), self.rf_grad)):
+            col = QVBoxLayout()
+            col.setSpacing(2)
+            col.addWidget(QLabel(label))
+            col.addLayout(self._num_row(spin))
+            num_row.addLayout(col)
+        num_row.addStretch()
+        f_train.addRow(num_row)
+
+        # 学习率
+        self.rf_lr = QDoubleSpinBox()
+        self.rf_lr.setRange(1e-6, 1.0)
+        self.rf_lr.setDecimals(6)
+        self.rf_lr.setSingleStep(1e-5)
+        self.rf_lr.setValue(1e-4)
+        f_train.addRow(Config.get("rfdetr_lr"), self._num_row(self.rf_lr))
+
+        # 输出目录
+        out_row = QHBoxLayout()
+        self.rf_out_dir = QLineEdit()
+        self.rf_out_dir.setText(os.path.join(os.getcwd(), "rfdetr_output"))
+        btn_out = QPushButton("...")
+        btn_out.setFixedWidth(40)
+        btn_out.clicked.connect(self._rf_browse_out)
+        out_row.addWidget(self.rf_out_dir)
+        out_row.addWidget(btn_out)
+        f_train.addRow(Config.get("rfdetr_output_dir"), out_row)
+
+        # EMA（4GB 显存下默认关闭）
+        self.rf_use_ema = QCheckBox(Config.get("rfdetr_use_ema"))
+        self.rf_use_ema.setChecked(False)
+        self.rf_use_ema.setToolTip("EMA 会额外占用显存；4GB 显卡建议关闭")
+        f_train.addRow("", self.rf_use_ema)
+
+        # 按钮：开始 / 停止合并为一个（训练中文本变「停止训练」）
+        btn_row = QHBoxLayout()
+        self.rf_btn_train = QPushButton(Config.get("rfdetr_start_train"))
+        self.rf_btn_train.setProperty("class", "PrimaryButton")
+        self.rf_btn_train.clicked.connect(self._rf_toggle_train)
+        btn_row.addWidget(self.rf_btn_train)
+        btn_row.addStretch()
+        f_train.addRow(btn_row)
+
+        g_train.setLayout(f_train)
+        layout.addWidget(g_train)
+
+        # ================= 验证 =================
+        g_val = QGroupBox(Config.get("rfdetr_val_group"))
+        f_val = QFormLayout()
+        f_val.setSpacing(8)
+
+        ck_row = QHBoxLayout()
+        self.rf_ckpt = QLineEdit()
+        self.rf_ckpt.setPlaceholderText("checkpoint_best_regular.pth")
+        btn_ck = QPushButton("...")
+        btn_ck.setFixedWidth(40)
+        btn_ck.clicked.connect(self._rf_browse_ckpt)
+        ck_row.addWidget(self.rf_ckpt)
+        ck_row.addWidget(btn_ck)
+        f_val.addRow(Config.get("rfdetr_ckpt"), ck_row)
+
+        self.rf_split = QComboBox()
+        self.rf_split.addItems(["test", "val"])
+        f_val.addRow(Config.get("rfdetr_split"), self.rf_split)
+
+        self.rf_btn_val = QPushButton(Config.get("rfdetr_start_val"))
+        self.rf_btn_val.setProperty("class", "PrimaryButton")
+        self.rf_btn_val.clicked.connect(self.start_rfdetr_val)
+        f_val.addRow(self.rf_btn_val)
+
+        # 指标表格
+        self.rf_metrics = QTableWidget(0, 2)
+        self.rf_metrics.setHorizontalHeaderLabels(
+            [Config.get("rfdetr_metric"), Config.get("rfdetr_value")])
+        self.rf_metrics.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.rf_metrics.setMaximumHeight(180)
+        f_val.addRow(self.rf_metrics)
+
+        g_val.setLayout(f_val)
+        layout.addWidget(g_val)
+
+        # ================= 导出 =================
+        g_exp = QGroupBox(Config.get("rfdetr_export_group"))
+        f_exp = QFormLayout()
+        f_exp.setSpacing(8)
+
+        self.rf_opset = QSpinBox()
+        self.rf_opset.setRange(11, 20)
+        self.rf_opset.setValue(17)
+        f_exp.addRow(Config.get("rfdetr_opset"), self._num_row(self.rf_opset))
+
+        self.rf_dyn_batch = QCheckBox(Config.get("rfdetr_dynamic_batch"))
+        self.rf_dyn_batch.setChecked(False)
+        f_exp.addRow("", self.rf_dyn_batch)
+
+        self.rf_btn_export = QPushButton(Config.get("rfdetr_start_export"))
+        self.rf_btn_export.setProperty("class", "PrimaryButton")
+        self.rf_btn_export.clicked.connect(self.start_rfdetr_export)
+        f_exp.addRow(self.rf_btn_export)
+
+        g_exp.setLayout(f_exp)
+        layout.addWidget(g_exp)
+
+        layout.addStretch()
+
+        # 未安装时整页禁用
+        if not self.rfdetr_ok:
+            for w in (self.rf_btn_train, self.rf_btn_val, self.rf_btn_export):
+                w.setEnabled(False)
+                w.setToolTip(Config.get("rfdetr_missing"))
+
+        self.rfdetr_train_worker = None
+        self.rfdetr_eval_worker = None
+        self.rfdetr_export_worker = None
+        self.rf_run_dir = None      # 当前训练产物目录（rfdetr_output/trainN）
+        return tab
+
+    # ---------- RF-DETR 浏览按钮 ----------
+    def _rf_browse_data(self):
+        p, _ = QFileDialog.getOpenFileName(
+            self, "选择数据集 YAML", os.getcwd(), "YAML (*.yaml *.yml)")
+        if p:
+            self.rf_data.setText(p)
+
+    def _rf_browse_out(self):
+        p = QFileDialog.getExistingDirectory(self, "选择输出目录", os.getcwd())
+        if p:
+            self.rf_out_dir.setText(p)
+
+    def _rf_browse_ckpt(self):
+        p, _ = QFileDialog.getOpenFileName(
+            self, "选择权重", os.getcwd(), "PyTorch (*.pth *.pt)")
+        if p:
+            self.rf_ckpt.setText(p)
+
+    # ---------- RF-DETR 输出目录：train1 / train2… 自动递增 ----------
+    def _rf_next_run_dir(self):
+        """在输出目录下取下一个 trainN 子目录（train1、train2…），类似 Ultralytics。
+
+        rf_out_dir 里填的是「项目目录」（如 <项目根>\\rfdetr_output），
+        每次训练自动往下一级建 trainN，避免多次训练产物互相覆盖。
+        """
+        import re
+        base = self.rf_out_dir.text().strip() or "rfdetr_output"
+        os.makedirs(base, exist_ok=True)
+        nums = []
+        for name in os.listdir(base):
+            if os.path.isdir(os.path.join(base, name)):
+                m = re.fullmatch(r"train(\d+)", name)
+                if m:
+                    nums.append(int(m.group(1)))
+        nxt = max(nums) + 1 if nums else 1
+        d = os.path.join(base, f"train{nxt}")
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def _rf_current_run_dir(self):
+        """当前（或最近一次）训练的产物目录 trainN，导出时复用，保证产物在一起。"""
+        d = getattr(self, "rf_run_dir", None)
+        if d and os.path.isdir(d):
+            return d
+        import re
+        base = self.rf_out_dir.text().strip() or "rfdetr_output"
+        best = 0
+        if os.path.isdir(base):
+            for name in os.listdir(base):
+                if os.path.isdir(os.path.join(base, name)):
+                    m = re.fullmatch(r"train(\d+)", name)
+                    if m:
+                        best = max(best, int(m.group(1)))
+        return os.path.join(base, f"train{best}") if best else base
+
+    # ---------- RF-DETR 开始 / 停止（同一个按钮） ----------
+    def _rf_toggle_train(self):
+        """开始 / 停止 二合一：训练中点击即停止。"""
+        w = self.rfdetr_train_worker
+        if w is not None and w.isRunning():
+            self.stop_rfdetr_train()
+        else:
+            self.start_rfdetr_train()
+
+    def _rf_set_train_btn(self, busy: bool):
+        """busy=True 显示「停止训练」，否则显示「开始训练」。"""
+        self.rf_btn_train.setText(
+            Config.get("rfdetr_stop_train") if busy else Config.get("rfdetr_start_train"))
+        self.rf_btn_train.setEnabled(True)
+
+    # ---------- 显存回收 ----------
+    def _busy_infer_threads(self):
+        """返回仍在跑推理/训练的线程名；全停则返回空列表。"""
+        out = []
+        for name, w in (("实时相机", self.thread),
+                        ("图片检测", self.image_worker),
+                        ("视频检测", self.video_file_worker),
+                        ("YOLO 训练", self.train_worker)):
+            if w is not None and getattr(w, "isRunning", lambda: False)():
+                out.append(name)
+        return out
+
+    def _free_vram(self):
+        """回收 PyTorch 缓存分配器保留的显存，返回释放的 MB。"""
+        try:
+            import gc
+            import torch
+            if not torch.cuda.is_available():
+                return 0.0
+            before = torch.cuda.memory_reserved()
+            gc.collect()
+            torch.cuda.empty_cache()
+            return max(0.0, (before - torch.cuda.memory_reserved()) / (1024 ** 2))
+        except Exception:
+            return 0.0
+
+    def _purge_before_job(self, tag="任务"):
+        """训练/验证前统一清一次显存，并提示是否有推理任务抢显存。"""
+        busy = self._busy_infer_threads()
+        if busy:
+            self.log(f"[{tag}] 注意：仍有任务在跑（{'、'.join(busy)}），"
+                     f"其显存可能无法释放，建议先停止它们再开始")
+        freed = self._free_vram()
+        if freed > 1:
+            self.log(f"[{tag}] 已回收 {freed:.0f} MB 显存缓存")
+
+    # ---------- RF-DETR 训练 ----------
+    def start_rfdetr_train(self):
+        if not self.rfdetr_ok:
+            self.log(Config.get("rfdetr_missing"))
+            return
+
+        yaml_path = self.rf_data.text().strip()
+        if not yaml_path or not os.path.isfile(yaml_path):
+            self.log("请先选择有效的数据集 YAML")
+            return
+
+        # 生成 RF-DETR 需要的 data.yaml（不复制图片）
+        try:
+            info = prepare_rfdetr_dataset(yaml_path)
+        except RFDETRDatasetError as e:
+            self.log(str(e))
+            return
+        except Exception as e:
+            self.log(f"数据集适配失败：{e}")
+            return
+
+        # 数据集自动适配提示（如 images/train → train/images）
+        for _n in info.get("notes", []):
+            self.log("· " + str(_n))
+
+        self.log(f"数据集就绪：{info['dataset_dir']}（{info['num_classes']} 类）")
+        ensure_rf_home()   # 权重缓存重定向到项目所在盘
+
+        # 开训前清一次显存缓存，并检查有没有推理线程抢显存
+        self._purge_before_job("RF-DETR")
+
+        # batch 解析：RF-DETR 的 "auto" 自带自动 batch 探测，在 4GB 这种紧张显存上
+        # 探测本身就会把显存顶爆导致进程硬崩（无 traceback 的 "Unhandled Python exception"）。
+        # 因此 "auto"（GUI 里 batch=0）由我们自己按当前可用显存算一个**具体整数**，
+        # 绝不直接把 "auto" 传给 RF-DETR——传具体整数会让它跳过探测分支。
+        if self.rf_batch.value() == 0:
+            resolved = suggest_rf_batch()
+            self.log(f"· batch 设为 auto：按当前可用显存自动选定为 {resolved}（不调用 RF-DETR 自带探测，避免 OOM 硬崩）")
+            batch = resolved
+        else:
+            batch = int(self.rf_batch.value())
+
+        # 输出目录：在 rf_out_dir 下自动递增 trainN（train1、train2…）
+        run_dir = self._rf_next_run_dir()
+        self.rf_run_dir = run_dir
+        self.log(f"本次训练产物目录：{run_dir}")
+
+        self.rfdetr_train_worker = RFDETRTrainWorker(
+            dataset_yaml=info["data_yaml"],
+            variant=self.rf_variant.currentText(),
+            epochs=int(self.rf_epochs.value()),
+            batch_size=batch,
+            grad_accum_steps=int(self.rf_grad.value()),
+            lr=float(self.rf_lr.value()),
+            output_dir=run_dir,
+            use_ema=self.rf_use_ema.isChecked(),
+            num_workers=0,        # Windows 下避免多进程 dataloader 问题
+        )
+        self.rfdetr_train_worker.log_signal.connect(self.log)
+        self.rfdetr_train_worker.progress_signal.connect(self._rf_update_progress)
+        self.rfdetr_train_worker.finished_signal.connect(self._rf_train_finished)
+        self.rfdetr_train_worker.start()
+
+        self._rf_set_train_btn(True)
+
+    def stop_rfdetr_train(self):
+        if self.rfdetr_train_worker:
+            self.rfdetr_train_worker.stop()
+
+    def _rf_update_progress(self, info):
+        e = info.get("epoch")
+        if e is None:
+            return
+        self.log(f"RF-DETR epoch {e}/{info.get('total', '?')}")
+
+    def _rf_train_finished(self, ok, msg):
+        self._rf_set_train_btn(False)
+        self.log(f"RF-DETR 训练{'成功' if ok else '失败'}：{msg}")
+        if ok:
+            # 训练完自动把最佳权重填进验证/导出的权重框，减少手工步骤
+            run_dir = getattr(self, "rf_run_dir", None) or (
+                self.rf_out_dir.text().strip() or "rfdetr_output")
+            best = os.path.join(run_dir, "checkpoint_best_regular.pth")
+            if os.path.isfile(best):
+                self.rf_ckpt.setText(best)
+                self.log(f"已自动填入最佳权重：{best}")
+
+    # ---------- RF-DETR 验证 ----------
+    def start_rfdetr_val(self):
+        if not self.rfdetr_ok:
+            self.log(Config.get("rfdetr_missing"))
+            return
+        ckpt = self.rf_ckpt.text().strip()
+        yaml_path = self.rf_data.text().strip()
+        if not ckpt or not os.path.isfile(ckpt):
+            self.log("请先选择有效的权重文件（.pth）")
+            return
+        if not yaml_path or not os.path.isfile(yaml_path):
+            self.log("请先选择有效的数据集 YAML")
+            return
+
+        try:
+            info = prepare_rfdetr_dataset(yaml_path)
+        except RFDETRDatasetError as e:
+            self.log(str(e))
+            return
+        except Exception as e:
+            self.log(f"数据集适配失败：{e}")
+            return
+
+        # 数据集自动适配提示（如 images/train → train/images）
+        for _n in info.get("notes", []):
+            self.log("· " + str(_n))
+
+        ensure_rf_home()
+        self._purge_before_job("RF-DETR 验证")
+        self.rfdetr_eval_worker = RFDETREvalWorker(
+            ckpt_path=ckpt,
+            dataset_dir=info["dataset_dir"],
+            split=self.rf_split.currentText(),
+            num_workers=0,
+        )
+        self.rfdetr_eval_worker.log_signal.connect(self.log)
+        self.rfdetr_eval_worker.result_signal.connect(self._rf_show_metrics)
+        self.rfdetr_eval_worker.finished_signal.connect(
+            lambda ok, m: self.rf_btn_val.setEnabled(True))
+        self.rf_btn_val.setEnabled(False)
+        self.rfdetr_eval_worker.start()
+
+    def _rf_show_metrics(self, metrics):
+        self.rf_metrics.setRowCount(0)
+        for k, v in metrics.items():
+            r = self.rf_metrics.rowCount()
+            self.rf_metrics.insertRow(r)
+            self.rf_metrics.setItem(r, 0, QTableWidgetItem(str(k)))
+            try:
+                txt = f"{float(v):.4f}"
+            except Exception:
+                txt = str(v)
+            self.rf_metrics.setItem(r, 1, QTableWidgetItem(txt))
+
+    # ---------- RF-DETR 导出 ----------
+    def start_rfdetr_export(self):
+        if not self.rfdetr_ok:
+            self.log(Config.get("rfdetr_missing"))
+            return
+        ckpt = self.rf_ckpt.text().strip()
+        if not ckpt or not os.path.isfile(ckpt):
+            self.log("请先选择有效的权重文件（.pth）")
+            return
+
+        ensure_rf_home()
+        self.rfdetr_export_worker = RFDETRExportWorker(
+            ckpt_path=ckpt,
+            output_dir=self._rf_current_run_dir(),
+            opset_version=int(self.rf_opset.value()),
+            dynamic_batch=self.rf_dyn_batch.isChecked(),
+        )
+        self.rfdetr_export_worker.log_signal.connect(self.log)
+        self.rfdetr_export_worker.finished_signal.connect(
+            lambda ok, m: self.rf_btn_export.setEnabled(True))
+        self.rf_btn_export.setEnabled(False)
+        self.rfdetr_export_worker.start()
+
     def create_benchmark_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
@@ -2096,6 +2566,9 @@ class MainWindow(QMainWindow):
         # For now let's use the CPU/GPU radio button selection or keep training specific?
         # Let's use the general selection for consistency
         device = self.current_device
+
+        # 开训前清一次显存缓存，并检查有没有推理线程抢显存
+        self._purge_before_job("YOLO")
 
         self.train_worker = TrainWorker(model_path, data_yaml, epochs, batch, imgsz, device, resume=resume, amp=amp)
         self.train_worker.log_signal.connect(self.log)
