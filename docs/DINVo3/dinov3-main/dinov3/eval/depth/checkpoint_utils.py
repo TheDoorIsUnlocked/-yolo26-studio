@@ -13,7 +13,7 @@ logger = logging.getLogger("dinov3")
 
 
 def unwrap_ddp_state_dict(model_state_dict):
-    is_ddp = all([k.startswith("module.") for k in model_state_dict.keys()])
+    is_ddp = all(k.startswith("module.") for k in model_state_dict)
     if is_ddp:
         model_state_dict = {k.split("module.", 1)[-1]: v for (k, v) in model_state_dict.items()}
     return model_state_dict
@@ -23,10 +23,10 @@ def load_checkpoint(checkpoint_path):
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     state_dicts = {}
     iteration = None
-    if "iteration" in checkpoint.keys():
+    if "iteration" in checkpoint:
         iteration = checkpoint["iteration"]
     state_dicts["model"] = unwrap_ddp_state_dict(checkpoint["model"])
-    if "optimizer" in checkpoint.keys():
+    if "optimizer" in checkpoint:
         state_dicts["optimizer"] = checkpoint["optimizer"]
     return state_dicts, iteration
 

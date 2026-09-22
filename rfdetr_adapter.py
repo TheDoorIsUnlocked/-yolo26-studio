@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-"""RF-DETR 数据集适配器。
+"""RF-DETR 数据集适配器。.
 
 RF-DETR 的 YOLO 数据集读取规则（见 rfdetr/datasets/yolo.py）：
 
@@ -31,28 +30,24 @@ import yaml
 
 __all__ = [
     "RFDETRDatasetError",
+    "prepare_rfdetr_dataset",
     "rfdetr_available",
     "rfdetr_missing_reason",
-    "prepare_rfdetr_dataset",
     "suggest_rf_batch",
 ]
 
 
 def suggest_rf_batch() -> int:
-    """返回 RF-DETR 训练的安全物理 batch（**具体整数，绝不返回 'auto'**）。
+    """返回 RF-DETR 训练的安全物理 batch（**具体整数，绝不返回 'auto'**）。.
 
     为什么要自己算、不直接传 'auto'：
 
-    RF-DETR 收到 ``batch_size="auto"`` 时会跑自动 batch 探测
-    （``rfdetr/training/auto_batch.py`` 的 ``resolve_auto_batch_config``）。
-    该探测会额外建一份 shadow 参数副本 + 跑 AdamW 的 ``step()``（再占 2× 参数），
-    并用合成 batch 从大到小试到 OOM。在显存本就紧张的卡上（如 4GB 笔记本卡，
-    Windows 桌面 + YOLO 推理模型常驻后只剩约 2.8GB 可用），探测本身就会把显存顶爆，
-    连 ``torch.cuda.empty_cache()`` 都会抛 ``CUDA error: out of memory``，
-    进程被硬崩（GUI 里表现为无 traceback 的 "Unhandled Python exception"）。
+    RF-DETR 收到 ``batch_size="auto"`` 时会跑自动 batch 探测 （``rfdetr/training/auto_batch.py`` 的 ``resolve_auto_batch_config``）。
+    该探测会额外建一份 shadow 参数副本 + 跑 AdamW 的 ``step()``（再占 2× 参数）， 并用合成 batch 从大到小试到 OOM。在显存本就紧张的卡上（如 4GB 笔记本卡， Windows 桌面 +
+    YOLO 推理模型常驻后只剩约 2.8GB 可用），探测本身就会把显存顶爆， 连 ``torch.cuda.empty_cache()`` 都会抛 ``CUDA error: out of memory``， 进程被硬崩（GUI
+    里表现为无 traceback 的 "Unhandled Python exception"）。
 
-    因此这里按**当前可用显存**保守给出一个具体整数，交给 RF-DETR 使用——
-    只要 batch 是具体整数，RF-DETR 就会**跳过**自动探测分支，从根本上避坑。
+    因此这里按**当前可用显存**保守给出一个具体整数，交给 RF-DETR 使用—— 只要 batch 是具体整数，RF-DETR 就会**跳过**自动探测分支，从根本上避坑。
 
     取值依据（实测峰值，含 Windows 桌面 ~1GB + YOLO 推理模型常驻）：
         batch 2 → 约 1.50 GB（安全）
@@ -69,8 +64,8 @@ def suggest_rf_batch() -> int:
         free, total = torch.cuda.mem_get_info()
     except Exception:
         return 2
-    free_gb = free / 1024 ** 3
-    total_gb = total / 1024 ** 3
+    free_gb = free / 1024**3
+    total_gb = total / 1024**3
 
     # 4GB / 6GB 笔记本卡：Windows 桌面常驻吃 ~1GB，峰值随 batch 急剧上升，封顶 2
     if total_gb <= 6.0:
@@ -87,28 +82,28 @@ def suggest_rf_batch() -> int:
 
 
 class RFDETRDatasetError(Exception):
-    """数据集不符合 RF-DETR 要求时抛出，消息面向终端用户，可直接显示到界面日志。"""
+    """数据集不符合 RF-DETR 要求时抛出，消息面向终端用户，可直接显示到界面日志。."""
 
 
 # --------------------------------------------------------------------------
 # 运行时可用性探测（可选依赖，缺失不应影响其余功能）
 # --------------------------------------------------------------------------
 def rfdetr_available() -> bool:
-    """rfdetr 是否已安装。
+    """Rfdetr 是否已安装。.
 
-    刻意**不真正 import**：实测 `import rfdetr` 耗时约 22 秒（会拉起
-    transformers / pytorch_lightning / supervision 等重型依赖），若在 UI
+    刻意**不真正 import**：实测 `import rfdetr` 耗时约 22 秒（会拉起 transformers / pytorch_lightning / supervision 等重型依赖），若在 UI
     主线程调用会直接卡死界面。这里只查元数据，导入动作全部放到子线程。
     """
     try:
         from importlib.util import find_spec
+
         return find_spec("rfdetr") is not None
     except Exception:
         return False
 
 
 def ensure_rf_home(prefer: str | None = None) -> str:
-    """把 RF-DETR 权重缓存目录落到**项目所在盘**，返回最终目录。
+    """把 RF-DETR 权重缓存目录落到**项目所在盘**，返回最终目录。.
 
     背景（重要）：
         RF-DETR 首次实例化模型会自动下载预训练权重，默认缓存到
@@ -118,7 +113,6 @@ def ensure_rf_home(prefer: str | None = None) -> str:
 
     优先级：已存在的 RF_HOME 环境变量 > prefer 参数 > <项目根>/.rfdetr_models
     """
-    import os
     env = os.environ.get("RF_HOME") or os.environ.get("ROBOFLOW_HOME")
     if env:
         return env
@@ -129,7 +123,7 @@ def ensure_rf_home(prefer: str | None = None) -> str:
 
 
 def rfdetr_missing_reason() -> str:
-    """返回给人看的安装提示。"""
+    """返回给人看的安装提示。."""
     return (
         "未检测到 rfdetr。RF-DETR 为可选功能，其余功能不受影响。\n"
         "安装命令（务必带约束文件，防止 torch 被换成 CPU 版）：\n"
@@ -144,7 +138,7 @@ def _load_yaml(path: Path) -> dict:
     if not path.exists():
         raise RFDETRDatasetError(f"数据集配置文件不存在：{path}")
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except Exception as e:
         raise RFDETRDatasetError(f"无法解析 {path.name}：{e}")
@@ -154,7 +148,7 @@ def _load_yaml(path: Path) -> dict:
 
 
 def _resolve(base: Path, value) -> Path | None:
-    """把 yaml 里的路径值解析成绝对路径；空值返回 None。"""
+    """把 yaml 里的路径值解析成绝对路径；空值返回 None。."""
     if value is None:
         return None
     s = str(value).strip()
@@ -167,7 +161,7 @@ def _resolve(base: Path, value) -> Path | None:
 
 
 def _normalize_names(names) -> dict:
-    """把 names 统一成 {int_id: str_name}。支持 dict 与 list 两种写法。"""
+    """把 names 统一成 {int_id: str_name}。支持 dict 与 list 两种写法。."""
     if isinstance(names, dict):
         out = {}
         for k, v in names.items():
@@ -182,13 +176,12 @@ def _normalize_names(names) -> dict:
 
 
 def _resolve_split_dir(root: Path, raw, want: str) -> Path | None:
-    """解析某个 split 的 images / labels 目录，兼容两种常见 YOLO 写法：
+    """解析某个 split 的 images / labels 目录，兼容两种常见 YOLO 写法：.
 
-      - split-first : <root>/train/images   （RF-DETR 原生期望）
-      - images-first: <root>/images/train   （部分 Roboflow / 旧导出用这种）
+    - split-first : <root>/train/images   （RF-DETR 原生期望）
+    - images-first: <root>/images/train   （部分 Roboflow / 旧导出用这种）
 
-    以「磁盘上真实存在的目录」为准，返回绝对路径；都不存在返回 None。
-    want 为 "images" 或 "labels"。
+    以「磁盘上真实存在的目录」为准，返回绝对路径；都不存在返回 None。 want 为 "images" 或 "labels"。
     """
     if raw is None:
         return None
@@ -219,10 +212,9 @@ def _resolve_split_dir(root: Path, raw, want: str) -> Path | None:
 
 
 def _rf_swap_labels(images_dir: Path) -> Path:
-    """复刻 RF-DETR 的 labels 推导规则：把路径里**任意位置**的 'images' 段换成 'labels'。
+    """复刻 RF-DETR 的 labels 推导规则：把路径里**任意位置**的 'images' 段换成 'labels'。.
 
-    RF-DETR 用这个规则从 data.yaml 的 train/val（图片目录）反推 labels 目录，
-    因此生成的 data.yaml 里 labels 必须落在这个位置，训练才能找到标注。
+    RF-DETR 用这个规则从 data.yaml 的 train/val（图片目录）反推 labels 目录， 因此生成的 data.yaml 里 labels 必须落在这个位置，训练才能找到标注。
     """
     parts = list(images_dir.parts)
     if "images" in parts:
@@ -232,14 +224,13 @@ def _rf_swap_labels(images_dir: Path) -> Path:
 
 
 def prepare_rfdetr_dataset(yaml_path: str, output_root: Path | None = None) -> dict:
-    """把选中的 YOLO yaml 适配成 RF-DETR 可直接训练的数据集。
+    """把选中的 YOLO yaml 适配成 RF-DETR 可直接训练的数据集。.
 
     在**数据集根目录**生成 `data.yaml`（所有路径为绝对路径）。
 
     参数
     ----
-    yaml_path : 用户选中的数据集 yaml（如 4940_has_labled.yaml）
-    output_root : data.yaml 写入位置，默认写到数据集根目录
+    yaml_path : 用户选中的数据集 yaml（如 4940_has_labled.yaml） output_root : data.yaml 写入位置，默认写到数据集根目录
 
     返回
     ----
@@ -288,7 +279,7 @@ def prepare_rfdetr_dataset(yaml_path: str, output_root: Path | None = None) -> d
         )
 
     # ---- val（缺失则退化为用 train） ----
-    val_raw, val_imgs = _resolve_split("val")
+    _val_raw, val_imgs = _resolve_split("val")
     if val_imgs is None:
         val_imgs = train_imgs
         notes.append("未找到独立 val 集，已用 train 集作为验证集。")
@@ -296,9 +287,7 @@ def prepare_rfdetr_dataset(yaml_path: str, output_root: Path | None = None) -> d
     if not val_labels.is_dir():
         if val_imgs is not train_imgs:
             raise RFDETRDatasetError(
-                f"找不到验证标签目录。\n"
-                f"  图片目录：{val_imgs}\n"
-                f"  RF-DETR 需要的标签目录：{val_labels}\n"
+                f"找不到验证标签目录。\n  图片目录：{val_imgs}\n  RF-DETR 需要的标签目录：{val_labels}\n"
             )
         val_labels = train_labels
 
