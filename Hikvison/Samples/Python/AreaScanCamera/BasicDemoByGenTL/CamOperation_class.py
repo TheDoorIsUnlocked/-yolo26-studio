@@ -1,22 +1,22 @@
-# -- coding: utf-8 --
-import threading
-import time
-import sys
-import inspect
 import ctypes
-import random
+import inspect
 import os
 import platform
+import random
+import sys
+import threading
+import time
 from ctypes import *
 
 currentsystem = platform.system()
-if currentsystem == 'Windows':
-    sys.path.append(os.path.join(os.getenv('MVCAM_COMMON_RUNENV'), "Samples", "Python", "MvImport"))
+if currentsystem == "Windows":
+    sys.path.append(os.path.join(os.getenv("MVCAM_COMMON_RUNENV"), "Samples", "Python", "MvImport"))
 else:
     sys.path.append(os.path.join("..", "..", "MvImport"))
 
 from CameraParams_header import *
 from MvCameraControl_class import *
+
 
 # 强制关闭线程
 def Async_raise(tid, exctype):
@@ -38,10 +38,10 @@ def Stop_thread(thread):
 
 # 转为16进制字符串
 def To_hex_str(num):
-    chaDic = {10: 'a', 11: 'b', 12: 'c', 13: 'd', 14: 'e', 15: 'f'}
+    chaDic = {10: "a", 11: "b", 12: "c", 13: "d", 14: "e", 15: "f"}
     hexStr = ""
     if num < 0:
-        num = num + 2 ** 32
+        num = num + 2**32
     while num >= 16:
         digit = num % 16
         hexStr = chaDic.get(digit, str(digit)) + hexStr
@@ -52,39 +52,65 @@ def To_hex_str(num):
 
 # 是否是Mono图像
 def Is_mono_data(enGvspPixelType):
-    if PixelType_Gvsp_Mono8 == enGvspPixelType or PixelType_Gvsp_Mono10 == enGvspPixelType \
-            or PixelType_Gvsp_Mono10_Packed == enGvspPixelType or PixelType_Gvsp_Mono12 == enGvspPixelType \
-            or PixelType_Gvsp_Mono12_Packed == enGvspPixelType:
-        return True
-    else:
-        return False
+    return bool(
+        PixelType_Gvsp_Mono8 == enGvspPixelType
+        or PixelType_Gvsp_Mono10 == enGvspPixelType
+        or PixelType_Gvsp_Mono10_Packed == enGvspPixelType
+        or PixelType_Gvsp_Mono12 == enGvspPixelType
+        or PixelType_Gvsp_Mono12_Packed == enGvspPixelType
+    )
 
 
 # 是否是彩色图像
 def Is_color_data(enGvspPixelType):
-    if PixelType_Gvsp_BayerGR8 == enGvspPixelType or PixelType_Gvsp_BayerRG8 == enGvspPixelType \
-            or PixelType_Gvsp_BayerGB8 == enGvspPixelType or PixelType_Gvsp_BayerBG8 == enGvspPixelType \
-            or PixelType_Gvsp_BayerGR10 == enGvspPixelType or PixelType_Gvsp_BayerRG10 == enGvspPixelType \
-            or PixelType_Gvsp_BayerGB10 == enGvspPixelType or PixelType_Gvsp_BayerBG10 == enGvspPixelType \
-            or PixelType_Gvsp_BayerGR12 == enGvspPixelType or PixelType_Gvsp_BayerRG12 == enGvspPixelType \
-            or PixelType_Gvsp_BayerGB12 == enGvspPixelType or PixelType_Gvsp_BayerBG12 == enGvspPixelType \
-            or PixelType_Gvsp_BayerGR10_Packed == enGvspPixelType or PixelType_Gvsp_BayerRG10_Packed == enGvspPixelType \
-            or PixelType_Gvsp_BayerGB10_Packed == enGvspPixelType or PixelType_Gvsp_BayerBG10_Packed == enGvspPixelType \
-            or PixelType_Gvsp_BayerGR12_Packed == enGvspPixelType or PixelType_Gvsp_BayerRG12_Packed == enGvspPixelType \
-            or PixelType_Gvsp_BayerGB12_Packed == enGvspPixelType or PixelType_Gvsp_BayerBG12_Packed == enGvspPixelType \
-            or PixelType_Gvsp_YUV422_Packed == enGvspPixelType or PixelType_Gvsp_YUV422_YUYV_Packed == enGvspPixelType:
-        return True
-    else:
-        return False
+    return bool(
+        PixelType_Gvsp_BayerGR8 == enGvspPixelType
+        or PixelType_Gvsp_BayerRG8 == enGvspPixelType
+        or PixelType_Gvsp_BayerGB8 == enGvspPixelType
+        or PixelType_Gvsp_BayerBG8 == enGvspPixelType
+        or PixelType_Gvsp_BayerGR10 == enGvspPixelType
+        or PixelType_Gvsp_BayerRG10 == enGvspPixelType
+        or PixelType_Gvsp_BayerGB10 == enGvspPixelType
+        or PixelType_Gvsp_BayerBG10 == enGvspPixelType
+        or PixelType_Gvsp_BayerGR12 == enGvspPixelType
+        or PixelType_Gvsp_BayerRG12 == enGvspPixelType
+        or PixelType_Gvsp_BayerGB12 == enGvspPixelType
+        or PixelType_Gvsp_BayerBG12 == enGvspPixelType
+        or PixelType_Gvsp_BayerGR10_Packed == enGvspPixelType
+        or PixelType_Gvsp_BayerRG10_Packed == enGvspPixelType
+        or PixelType_Gvsp_BayerGB10_Packed == enGvspPixelType
+        or PixelType_Gvsp_BayerBG10_Packed == enGvspPixelType
+        or PixelType_Gvsp_BayerGR12_Packed == enGvspPixelType
+        or PixelType_Gvsp_BayerRG12_Packed == enGvspPixelType
+        or PixelType_Gvsp_BayerGB12_Packed == enGvspPixelType
+        or PixelType_Gvsp_BayerBG12_Packed == enGvspPixelType
+        or PixelType_Gvsp_YUV422_Packed == enGvspPixelType
+        or PixelType_Gvsp_YUV422_YUYV_Packed == enGvspPixelType
+    )
+
 
 # 相机操作类
 class CameraOperation:
-
-    def __init__(self, obj_cam, st_device_list, n_connect_num=0, b_open_device=False, b_start_grabbing=False,
-                 h_thread_handle=None,
-                 b_thread_closed=False, st_frame_info=None, b_exit=False, b_save_bmp=False, b_save_jpg=False,
-                 buf_save_image=None,
-                 n_save_image_size=0, n_win_gui_id=0, frame_rate=0, exposure_time=0, gain=0):
+    def __init__(
+        self,
+        obj_cam,
+        st_device_list,
+        n_connect_num=0,
+        b_open_device=False,
+        b_start_grabbing=False,
+        h_thread_handle=None,
+        b_thread_closed=False,
+        st_frame_info=None,
+        b_exit=False,
+        b_save_bmp=False,
+        b_save_jpg=False,
+        buf_save_image=None,
+        n_save_image_size=0,
+        n_win_gui_id=0,
+        frame_rate=0,
+        exposure_time=0,
+        gain=0,
+    ):
 
         self.obj_cam = obj_cam
         self.st_device_list = st_device_list
@@ -114,8 +140,9 @@ class CameraOperation:
 
             # ch:选择设备并创建句柄 | en:Select device and create handle
             nConnectionNum = int(self.n_connect_num)
-            stDeviceInfo = cast(self.st_device_list.pDeviceInfo[int(nConnectionNum)],
-                                POINTER(MV_GENTL_DEV_INFO)).contents
+            stDeviceInfo = cast(
+                self.st_device_list.pDeviceInfo[int(nConnectionNum)], POINTER(MV_GENTL_DEV_INFO)
+            ).contents
             self.obj_cam = MvCamera()
             ret = self.obj_cam.MV_CC_CreateHandleByGenTL(stDeviceInfo)
             if ret != 0:
@@ -132,12 +159,12 @@ class CameraOperation:
             stBool = c_bool(False)
             ret = self.obj_cam.MV_CC_GetBoolValue("AcquisitionFrameRateEnable", stBool)
             if ret != 0:
-                print("get acquisition frame rate enable fail! ret[0x%x]" % ret)
+                print(f"get acquisition frame rate enable fail! ret[0x{ret:x}]")
 
             # ch:设置触发模式为off | en:Set trigger mode as off
             ret = self.obj_cam.MV_CC_SetEnumValue("TriggerMode", MV_TRIGGER_MODE_OFF)
             if ret != 0:
-                print("set trigger mode fail! ret[0x%x]" % ret)
+                print(f"set trigger mode fail! ret[0x{ret:x}]")
             return MV_OK
 
     # 开始取图
@@ -150,7 +177,7 @@ class CameraOperation:
             self.b_start_grabbing = True
             print("start grabbing successfully!")
             try:
-                thread_id = random.randint(1, 10000)
+                random.randint(1, 10000)
                 self.h_thread_handle = threading.Thread(target=CameraOperation.Work_thread, args=(self, winHandle))
                 self.h_thread_handle.start()
                 self.b_thread_closed = True
@@ -266,28 +293,28 @@ class CameraOperation:
 
     # 设置参数
     def Set_parameter(self, frameRate, exposureTime, gain):
-        if '' == frameRate or '' == exposureTime or '' == gain:
-            print('show info: please type in the text box !')
+        if "" == frameRate or "" == exposureTime or "" == gain:
+            print("show info: please type in the text box !")
             return MV_E_PARAMETER
         if self.b_open_device:
             ret = self.obj_cam.MV_CC_SetEnumValue("ExposureAuto", 0)
             time.sleep(0.2)
             ret = self.obj_cam.MV_CC_SetFloatValue("ExposureTime", float(exposureTime))
             if ret != 0:
-                print('show error: set exposure time fail! ret = ' + To_hex_str(ret))
+                print("show error: set exposure time fail! ret = " + To_hex_str(ret))
                 return ret
 
             ret = self.obj_cam.MV_CC_SetFloatValue("Gain", float(gain))
             if ret != 0:
-                print('show error: set gain fail! ret = ' + To_hex_str(ret))
+                print("show error: set gain fail! ret = " + To_hex_str(ret))
                 return ret
 
             ret = self.obj_cam.MV_CC_SetFloatValue("AcquisitionFrameRate", float(frameRate))
             if ret != 0:
-                print('show error: set acquistion frame rate fail! ret = ' + To_hex_str(ret))
+                print("show error: set acquisition frame rate fail! ret = " + To_hex_str(ret))
                 return ret
 
-            print('show info: set parameter success!')
+            print("show info: set parameter success!")
 
             return MV_OK
 
@@ -322,7 +349,9 @@ class CameraOperation:
                         self.buf_save_image = (c_ubyte * stOutFrame.stFrameInfo.nFrameLen)()
                         self.buf_save_image_len = stOutFrame.stFrameInfo.nFrameLen
 
-                    ctypes.memmove(byref(self.st_frame_info), byref(stOutFrame.stFrameInfo), sizeof(MV_FRAME_OUT_INFO_EX))
+                    ctypes.memmove(
+                        byref(self.st_frame_info), byref(stOutFrame.stFrameInfo), sizeof(MV_FRAME_OUT_INFO_EX)
+                    )
                     ctypes.memmove(byref(self.buf_save_image), stOutFrame.pBufAddr, self.st_frame_info.nFrameLen)
                 except Exception as e:
                     self.buf_lock.release()
@@ -331,8 +360,10 @@ class CameraOperation:
                 finally:
                     self.buf_lock.release()
 
-                print("get one frame: Width[%d], Height[%d], nFrameNum[%d]"
-                      % (self.st_frame_info.nWidth, self.st_frame_info.nHeight, self.st_frame_info.nFrameNum))
+                print(
+                    "get one frame: Width[%d], Height[%d], nFrameNum[%d]"
+                    % (self.st_frame_info.nWidth, self.st_frame_info.nHeight, self.st_frame_info.nFrameNum)
+                )
                 # 释放缓存
                 try:
                     self.obj_cam.MV_CC_FreeImageBuffer(stOutFrame)
@@ -366,7 +397,7 @@ class CameraOperation:
         self.buf_lock.acquire()
 
         file_path = str(self.st_frame_info.nFrameNum) + ".jpg"
-        c_file_path = file_path.encode('ascii')
+        c_file_path = file_path.encode("ascii")
         stSaveParam = MV_SAVE_IMAGE_TO_FILE_PARAM_EX()
         stSaveParam.enPixelType = self.st_frame_info.enPixelType  # ch:相机对应的像素格式 | en:Camera pixel type
         stSaveParam.nWidth = self.st_frame_info.nWidth  # ch:相机对应的宽 | en:Width
@@ -392,7 +423,7 @@ class CameraOperation:
         self.buf_lock.acquire()
 
         file_path = str(self.st_frame_info.nFrameNum) + ".bmp"
-        c_file_path = file_path.encode('ascii')
+        c_file_path = file_path.encode("ascii")
         stSaveParam = MV_SAVE_IMAGE_TO_FILE_PARAM_EX()
         stSaveParam.enPixelType = self.st_frame_info.enPixelType  # ch:相机对应的像素格式 | en:Camera pixel type
         stSaveParam.nWidth = self.st_frame_info.nWidth  # ch:相机对应的宽 | en:Width
