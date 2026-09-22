@@ -1,42 +1,85 @@
-
-import sys
-import os
-import glob
 import datetime
+import glob
 import multiprocessing
+import os
+import sys
+
 import cv2
 
 # Add project root to sys.path (works on Windows & Linux)
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                             QPushButton, QLabel, QFrame, QDockWidget, QComboBox,
-                             QSlider, QGroupBox, QListWidget, QTextEdit, QTabWidget,
-                             QFileDialog, QProgressBar, QSplitter, QScrollArea, QCheckBox, QSpinBox, QButtonGroup, QRadioButton, QToolButton, QSizePolicy,
-                             QTableWidget, QTableWidgetItem, QHeaderView,
-                             QLineEdit, QDoubleSpinBox, QFormLayout)
-from PyQt6.QtCore import Qt, QSize, pyqtSlot, QUrl, QTimer, QRect, QPoint, pyqtSignal
-from PyQt6.QtGui import QPixmap, QImage, QIcon, QAction, QShortcut, QKeySequence, QPainter, QFont, QColor, QWheelEvent
+from PyQt6.QtCore import QPoint, QRect, QSize, Qt, QTimer, pyqtSignal, pyqtSlot
+from PyQt6.QtGui import QColor, QFont, QIcon, QImage, QKeySequence, QPainter, QPixmap, QShortcut, QWheelEvent
 from PyQt6.QtMultimedia import QMediaDevices
+from PyQt6.QtWidgets import (
+    QApplication,
+    QButtonGroup,
+    QCheckBox,
+    QComboBox,
+    QDockWidget,
+    QDoubleSpinBox,
+    QFileDialog,
+    QFormLayout,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QMainWindow,
+    QProgressBar,
+    QPushButton,
+    QRadioButton,
+    QScrollArea,
+    QSizePolicy,
+    QSlider,
+    QSpinBox,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QTextEdit,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 # Add current directory to path so we can import local modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from styles import Theme
-from workers import (VideoThread, ImageWorker, TrainWorker, VideoFileWorker,
-                     ExportWorker, ValWorker, BenchmarkWorker, AugmentWorker,
-                     AnomalyBuildWorker, AnomalyValidateWorker,
-                     AnomalyExportWorker,
-                     RFDETRTrainWorker, RFDETREvalWorker, RFDETRExportWorker,
-                     RFDETR_VARIANTS)
-from rfdetr_adapter import (rfdetr_available, rfdetr_missing_reason,
-                            prepare_rfdetr_dataset, RFDETRDatasetError,
-                            ensure_rf_home, suggest_rf_batch)
 from config import Config
-from val_report import build_markdown, build_json
+from rfdetr_adapter import (
+    RFDETRDatasetError,
+    ensure_rf_home,
+    prepare_rfdetr_dataset,
+    rfdetr_available,
+    suggest_rf_batch,
+)
+from styles import Theme
+from val_report import build_json, build_markdown
+from workers import (
+    RFDETR_VARIANTS,
+    AnomalyBuildWorker,
+    AnomalyExportWorker,
+    AnomalyValidateWorker,
+    AugmentWorker,
+    BenchmarkWorker,
+    ExportWorker,
+    ImageWorker,
+    RFDETREvalWorker,
+    RFDETRExportWorker,
+    RFDETRTrainWorker,
+    TrainWorker,
+    ValWorker,
+    VideoFileWorker,
+    VideoThread,
+)
+
 
 def _fmt_hms(seconds):
-    """秒 -> "H:MM:SS"(不足一天) 或 "D day, H:MM:SS"。"""
+    """秒 -> "H:MM:SS"(不足一天) 或 "D day, H:MM:SS"。."""
     return str(datetime.timedelta(seconds=max(0, int(seconds))))
 
 
@@ -52,15 +95,16 @@ def emoji_to_pixmap(emoji, size=48):
     font = QFont("Segoe UI Emoji", font_size)
     font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
     painter.setFont(font)
-    
-    # Let's use a neutral or theme-based color. 
-    # Current style uses TEXT_SUB for NavButton. 
+
+    # Let's use a neutral or theme-based color.
+    # Current style uses TEXT_SUB for NavButton.
     text_color = Theme.get_colors()["TEXT_SUB"]
     painter.setPen(QColor(text_color))
-    
+
     painter.drawText(QRect(0, 0, size, size), Qt.AlignmentFlag.AlignCenter, emoji)
     painter.end()
     return pixmap
+
 
 class ZoomableLabel(QLabel):
     fileDropped = pyqtSignal(str)
@@ -71,7 +115,7 @@ class ZoomableLabel(QLabel):
         self.setMinimumSize(640, 480)
         self.setStyleSheet("background-color: black;")
         self.setAcceptDrops(True)
-        
+
         self._pixmap = None
         self._scale_factor = 1.0
         self._pan_start = QPoint()
@@ -80,7 +124,7 @@ class ZoomableLabel(QLabel):
 
     def setPixmap(self, pixmap):
         self._pixmap = pixmap
-        self.update() # Trigger paintEvent
+        self.update()  # Trigger paintEvent
 
     def paintEvent(self, event):
         if not self._pixmap:
@@ -106,28 +150,27 @@ class ZoomableLabel(QLabel):
     def wheelEvent(self, event: QWheelEvent):
         angle = event.angleDelta().y()
         factor = 1.1 if angle > 0 else 0.9
-        
-        old_scale = self._scale_factor
+
         new_scale = self._scale_factor * factor
-        
+
         # Limit scale
         if 0.1 < new_scale < 10.0:
             self._scale_factor = new_scale
-            
+
             # Adjust pan offset to zoom towards mouse cursor (optional but better UX)
             # For simplicity, we just zoom center for now or keep existing pan relative?
             # Keeping it simple: just zoom, existing pan offset remains valid-ish but might drift.
             # Ideally we adjust offset to keep mouse point stable.
-            
+
             # Calculate mouse position relative to image center (before zoom)
             # center_x = self.width() // 2 + self._pan_offset.x()
             # center_y = self.height() // 2 + self._pan_offset.y()
             # mouse_rel_x = event.position().x() - center_x
             # mouse_rel_y = event.position().y() - center_y
-            
-            # This is complex to get right quickly without glitching. 
+
+            # This is complex to get right quickly without glitching.
             # Let's stick to simple zoom first, maybe reset pan if zoomed out?
-            
+
             self.update()
 
     def mousePressEvent(self, event):
@@ -166,13 +209,14 @@ class ZoomableLabel(QLabel):
             # Emit signal for the first file
             self.fileDropped.emit(files[0])
 
+
 class ResizableLabel(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("background-color: black;")
-        self.setMinimumSize(100, 100) # Allow shrinking
-        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored) # Allow expansion
+        self.setMinimumSize(100, 100)  # Allow shrinking
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)  # Allow expansion
         self._original_pixmap = None
         self._scale_factor = 1.0
 
@@ -183,14 +227,14 @@ class ResizableLabel(QLabel):
     def resizeEvent(self, event):
         self.update_display()
         super().resizeEvent(event)
-        
+
     def wheelEvent(self, event: QWheelEvent):
         angle = event.angleDelta().y()
         if angle > 0:
             self._scale_factor *= 1.1
         else:
             self._scale_factor *= 0.9
-        
+
         # Clamp
         self._scale_factor = max(0.1, min(self._scale_factor, 5.0))
         self.update_display()
@@ -205,15 +249,11 @@ class ResizableLabel(QLabel):
             # Calculate target size based on widget size * zoom
             target_w = int(self.width() * self._scale_factor)
             target_h = int(self.height() * self._scale_factor)
-            
+
             scaled = self._original_pixmap.scaled(
-                 target_w, target_h,
-                 Qt.AspectRatioMode.KeepAspectRatio,
-                 Qt.TransformationMode.SmoothTransformation
-             )
+                target_w, target_h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            )
             super().setPixmap(scaled)
-
-
 
 
 class MainWindow(QMainWindow):
@@ -224,7 +264,7 @@ class MainWindow(QMainWindow):
         self._app_icon = QIcon(emoji_to_pixmap("🎯", 256))
         self.setWindowIcon(self._app_icon)
         self.resize(1280, 800)
-        
+
         # State
         self.current_model = "yolo26n.pt"
         self.det_model_path = None
@@ -236,21 +276,21 @@ class MainWindow(QMainWindow):
         self.val_worker = None
         self.benchmark_worker = None
         self.last_val_results = None
-        self.current_device = '0'
-        
+        self.current_device = "0"
+
         # Apply Theme
         self.apply_theme()
-        
+
         # Setup UI
         self.init_ui()
-        
+
         # Shortcuts
         self.shortcut_open = QShortcut(QKeySequence("Ctrl+O"), self)
         self.shortcut_open.activated.connect(self.open_file)
-        
+
         self.shortcut_save = QShortcut(QKeySequence("Ctrl+S"), self)
         self.shortcut_save.activated.connect(self.save_result)
-        
+
         # Performance Monitor Timer
         self.start_perf_monitoring()
 
@@ -266,42 +306,44 @@ class MainWindow(QMainWindow):
         self.top_bar.setObjectName("TopBar")
         top_layout = QHBoxLayout(self.top_bar)
         top_layout.setContentsMargins(10, 5, 10, 5)
-        
+
         self.logo_label = QLabel(f"🤖 {Config.get('title')}")
         self.logo_label.setObjectName("LogoTitle")
-        
+
         # Language Switcher
         self.lang_btn = QPushButton(Config.get("lang_en") if Config.LANG == "CN" else Config.get("lang_cn"))
         self.lang_btn.setProperty("class", "SecondaryButton")
         self.lang_btn.clicked.connect(self.toggle_lang)
-        
+
         # Theme Switcher
-        self.theme_btn = QPushButton(Config.get("theme_light") if Theme.CURRENT_THEME == "Dark" else Config.get("theme_dark"))
+        self.theme_btn = QPushButton(
+            Config.get("theme_light") if Theme.CURRENT_THEME == "Dark" else Config.get("theme_dark")
+        )
         self.theme_btn.setProperty("class", "SecondaryButton")
         self.theme_btn.clicked.connect(self.toggle_theme)
 
         self.status_label = QLabel(Config.get("status_idle"))
         self.status_label.setObjectName("StatusLabel")
         self.status_label.setStyleSheet(f"color: {Theme.get_colors()['ACCENT']};")
-        
+
         top_layout.addWidget(self.logo_label)
         top_layout.addStretch()
         top_layout.addWidget(self.lang_btn)
         top_layout.addWidget(self.theme_btn)
         top_layout.addWidget(self.status_label)
-        
+
         # 2. Side Navigation
         self.side_nav = QFrame()
         self.side_nav.setObjectName("SideNav")
         nav_layout = QVBoxLayout(self.side_nav)
         nav_layout.setContentsMargins(5, 10, 5, 10)
         nav_layout.setSpacing(10)
-        
+
         self.nav_group = QButtonGroup(self)
         self.nav_buttons = []
         # Store items as instance variable for access in update_ui_text
         self.nav_items = [
-            ("🔍", "realtime", 0), # Dashboard removed/merged into realtime as default
+            ("🔍", "realtime", 0),  # Dashboard removed/merged into realtime as default
             ("🖼️", "image", 1),
             ("📹", "video", 2),
             ("📊", "train", 3),
@@ -310,9 +352,9 @@ class MainWindow(QMainWindow):
             ("🎯", "rfdetr", 6),
             ("📈", "benchmark", 7),
             ("🔬", "anomaly", 8),
-            ("⚙️", "settings", 9)
+            ("⚙️", "settings", 9),
         ]
-        
+
         for icon, key, idx in self.nav_items:
             name = Config.get(key)
             btn = QToolButton()
@@ -321,7 +363,7 @@ class MainWindow(QMainWindow):
             btn.setIcon(QIcon(emoji_to_pixmap(icon, 48)))
             btn.setIconSize(QSize(40, 40))
             btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-            
+
             btn.setCheckable(True)
             btn.setProperty("class", "NavButton")
             btn.setFixedSize(90, 80)
@@ -329,22 +371,22 @@ class MainWindow(QMainWindow):
             btn.clicked.connect(lambda checked, i=idx: self.switch_tab(i))
             nav_layout.addWidget(btn)
             self.nav_buttons.append(btn)
-        
+
         # Select first one by default
         self.nav_buttons[0].setChecked(True)
         nav_layout.addStretch()
-        
+
         # 3. Main Workspace
         self.main_workspace = QWidget()
         main_layout = QVBoxLayout(self.main_workspace)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         self.tabs = QTabWidget()
         self.tabs.setTabPosition(QTabWidget.TabPosition.North)
         self.tabs.setDocumentMode(True)
-        self.tabs.setTabsClosable(False) # Disable closing for main tabs
-        self.tabs.tabBar().setVisible(False) # Hide tab bar, use side nav
-        
+        self.tabs.setTabsClosable(False)  # Disable closing for main tabs
+        self.tabs.tabBar().setVisible(False)  # Hide tab bar, use side nav
+
         # Initialize Tabs
         self.realtime_tab = self.create_realtime_tab()
         self.image_tab = self.create_image_tab()
@@ -355,8 +397,8 @@ class MainWindow(QMainWindow):
         self.rfdetr_tab = self.create_rfdetr_tab()
         self.benchmark_tab = self.create_benchmark_tab()
         self.anomaly_tab = self.create_anomaly_tab()
-        self.settings_tab = QWidget() # Placeholder
-        
+        self.settings_tab = QWidget()  # Placeholder
+
         # 给 tab 页面套上可滚动区域，避免内容最小尺寸把窗口撑得超出屏幕
         def _scrollable(widget):
             sa = QScrollArea()
@@ -374,7 +416,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(_scrollable(self.benchmark_tab), "Benchmark")
         self.tabs.addTab(_scrollable(self.anomaly_tab), "Anomaly")
         self.tabs.addTab(self.settings_tab, "Settings")
-        
+
         # Console (training/inference logs area)
         self.console = QTextEdit()
         self.console.setReadOnly(True)
@@ -410,18 +452,20 @@ class MainWindow(QMainWindow):
         splitter.addWidget(console_widget)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
-        
+
         main_layout.addWidget(splitter)
-        
+
         # 4. Side Panel (Dock)
         self.dock = QDockWidget(Config.get("control_panel"), self)
         self.dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
-        self.dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetFloatable)
-        
+        self.dock.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetFloatable
+        )
+
         dock_content = QWidget()
         dock_content.setObjectName("SidePanelContent")
         dock_layout = QVBoxLayout(dock_content)
-        
+
         # Model Selector
         self.model_group = QGroupBox(Config.get("model_sel"))
         model_layout = QVBoxLayout()
@@ -455,12 +499,15 @@ class MainWindow(QMainWindow):
         # Disable the GPU option if CUDA is not usable in this environment (e.g. CPU-only torch)
         try:
             import torch
+
             _cuda_available = torch.cuda.is_available()
         except Exception:
             _cuda_available = False
         if not _cuda_available:
             self.radio_gpu.setEnabled(False)
-            self.radio_gpu.setToolTip("CUDA 不可用：当前 PyTorch 为 CPU 版本或未检测到可用显卡驱动，请安装 CUDA 版 PyTorch")
+            self.radio_gpu.setToolTip(
+                "CUDA 不可用：当前 PyTorch 为 CPU 版本或未检测到可用显卡驱动，请安装 CUDA 版 PyTorch"
+            )
             self.radio_cpu.setChecked(True)
         else:
             self.radio_gpu.setChecked(True)
@@ -479,7 +526,7 @@ class MainWindow(QMainWindow):
         device_layout.addWidget(self.radio_cpu)
         device_layout.addWidget(self.radio_gpu)
         self.device_group.setLayout(device_layout)
-        
+
         # Performance Monitor
         self.perf_group = QGroupBox(Config.get("perf_mon"))
         perf_layout = QVBoxLayout()
@@ -490,11 +537,11 @@ class MainWindow(QMainWindow):
         perf_layout.addWidget(self.lbl_ram)
         perf_layout.addWidget(self.lbl_gpu)
         self.perf_group.setLayout(perf_layout)
-        
+
         # Parameters
         self.param_group = QGroupBox(Config.get("params"))
         param_layout = QVBoxLayout()
-        
+
         self.lbl_conf = QLabel(Config.get("conf"))
         param_layout.addWidget(self.lbl_conf)
         self.conf_slider = QSlider(Qt.Orientation.Horizontal)
@@ -502,7 +549,7 @@ class MainWindow(QMainWindow):
         self.conf_slider.setValue(25)
         self.conf_slider.valueChanged.connect(self.update_params)
         param_layout.addWidget(self.conf_slider)
-        
+
         self.lbl_iou = QLabel(Config.get("iou"))
         param_layout.addWidget(self.lbl_iou)
         self.iou_slider = QSlider(Qt.Orientation.Horizontal)
@@ -510,12 +557,12 @@ class MainWindow(QMainWindow):
         self.iou_slider.setValue(45)
         self.iou_slider.valueChanged.connect(self.update_params)
         param_layout.addWidget(self.iou_slider)
-        
+
         # Initialize labels
         self.update_params()
-        
+
         self.param_group.setLayout(param_layout)
-        
+
         # Results
         self.result_group = QGroupBox(Config.get("results"))
         result_layout = QVBoxLayout()
@@ -524,14 +571,14 @@ class MainWindow(QMainWindow):
         result_layout.addWidget(self.fps_label)
         result_layout.addWidget(self.result_list)
         self.result_group.setLayout(result_layout)
-        
+
         dock_layout.addWidget(self.model_group)
         dock_layout.addWidget(self.device_group)
         dock_layout.addWidget(self.perf_group)
         dock_layout.addWidget(self.param_group)
         dock_layout.addWidget(self.result_group)
         dock_layout.addStretch()
-        
+
         # 右侧控制面板内容套可滚动区，避免其内容最小高度把窗口撑超出屏幕
         dock_scroll = QScrollArea()
         dock_scroll.setWidgetResizable(True)
@@ -539,13 +586,13 @@ class MainWindow(QMainWindow):
         dock_scroll.setWidget(dock_content)
         dock_content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.dock.setWidget(dock_scroll)
-        
+
         # Assemble Main Layout
         central_widget = QWidget()
         central_layout = QHBoxLayout(central_widget)
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(0)
-        
+
         # 左侧导航栏套可滚动区，避免 8 个按钮把窗口最小高度撑到超屏
         nav_scroll = QScrollArea()
         nav_scroll.setWidgetResizable(True)
@@ -556,7 +603,7 @@ class MainWindow(QMainWindow):
         nav_scroll.setFixedWidth(100)
         nav_scroll.setMinimumWidth(100)
         central_layout.addWidget(nav_scroll)
-        
+
         # Right side container (TopBar + Workspace)
         right_container = QWidget()
         right_layout = QVBoxLayout(right_container)
@@ -564,48 +611,48 @@ class MainWindow(QMainWindow):
         right_layout.setSpacing(0)
         right_layout.addWidget(self.top_bar)
         right_layout.addWidget(self.main_workspace)
-        
+
         central_layout.addWidget(right_container)
-        
+
         self.setCentralWidget(central_widget)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
-        
+
         self.log("System initialized.")
 
     def create_realtime_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        
+
         # Use ZoomableLabel for automatic scaling and zoom
         self.video_label = ZoomableLabel()
         self.video_label.fileDropped.connect(self.process_dropped_file)
         # Remove fixed size constraint logic that might prevent shrinking
-        # self.video_label.setMinimumSize(640, 480) 
-        
+        # self.video_label.setMinimumSize(640, 480)
+
         controls = QHBoxLayout()
-        
+
         # Camera Index Selector
         self.lbl_cam_idx = QLabel(Config.get("cam_idx"))
         controls.addWidget(self.lbl_cam_idx)
         self.cam_combo = QComboBox()
-        
+
         # Populate cameras
         cameras = QMediaDevices.videoInputs()
         cam_list = []
         for i, cam in enumerate(cameras):
             cam_list.append(f"{i}: {cam.description()}")
-            
+
         # Add "Screen" and "Hikvision" options
-        self.cam_combo.addItems(cam_list + ["Screen", "Hikvision"])
-        
+        self.cam_combo.addItems([*cam_list, "Screen", "Hikvision"])
+
         # If no cameras found, fallback or at least show Screen/Hikvision
         if not cameras:
-             # Just in case user has no standard cameras but wants to use Screen/Hikvision
-             # The combo box will just have Screen and Hikvision
-             pass
-             
+            # Just in case user has no standard cameras but wants to use Screen/Hikvision
+            # The combo box will just have Screen and Hikvision
+            pass
+
         controls.addWidget(self.cam_combo)
-        
+
         # Rotation
         controls.addWidget(QLabel("Rotation:"))
         self.rot_combo = QComboBox()
@@ -613,25 +660,25 @@ class MainWindow(QMainWindow):
         self.rot_combo.setCurrentText("180")
         self.rot_combo.currentTextChanged.connect(self.change_rotation)
         controls.addWidget(self.rot_combo)
-        
+
         # Tracker (New)
         controls.addWidget(QLabel(Config.get("tracker")))
         self.tracker_combo = QComboBox()
         self.tracker_combo.addItems(["None", "bytetrack.yaml", "botsort.yaml"])
         controls.addWidget(self.tracker_combo)
-        
+
         self.btn_start = QPushButton(Config.get("start_cam"))
         self.btn_start.setProperty("class", "ActionButton")
         self.btn_start.clicked.connect(self.toggle_camera)
-        
+
         self.chk_auto_save_video = QCheckBox(Config.get("auto_save"))
         self.chk_auto_save_video.stateChanged.connect(self.toggle_video_save)
-        
+
         controls.addStretch()
         controls.addWidget(self.btn_start)
         controls.addWidget(self.chk_auto_save_video)
         controls.addStretch()
-        
+
         layout.addWidget(self.video_label)
         layout.addLayout(controls)
         return tab
@@ -639,23 +686,23 @@ class MainWindow(QMainWindow):
     def create_image_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        
+
         self.image_label = ZoomableLabel()
-        
+
         controls = QHBoxLayout()
         self.btn_open_img = QPushButton(Config.get("open_img"))
         self.btn_open_img.setProperty("class", "ActionButton")
         self.btn_open_img.clicked.connect(self.open_image)
-        
+
         self.btn_open_folder = QPushButton(Config.get("open_folder"))
         self.btn_open_folder.setProperty("class", "ActionButton")
         self.btn_open_folder.clicked.connect(self.open_folder)
-        
+
         self.btn_prev_img = QPushButton(Config.get("prev_image"))
         self.btn_prev_img.setProperty("class", "ActionButton")
         self.btn_prev_img.clicked.connect(self.prev_image)
         self.btn_prev_img.setEnabled(False)
-        
+
         self.btn_next_img = QPushButton(Config.get("next_image"))
         self.btn_next_img.setProperty("class", "ActionButton")
         self.btn_next_img.clicked.connect(self.next_image)
@@ -664,9 +711,9 @@ class MainWindow(QMainWindow):
         self.btn_save_img = QPushButton(Config.get("save_res"))
         self.btn_save_img.setProperty("class", "SecondaryButton")
         self.btn_save_img.clicked.connect(self.save_result)
-        
+
         self.chk_auto_save_img = QCheckBox(Config.get("auto_save"))
-        
+
         controls.addStretch()
         controls.addWidget(self.btn_open_img)
         controls.addWidget(self.btn_open_folder)
@@ -675,7 +722,7 @@ class MainWindow(QMainWindow):
         controls.addWidget(self.btn_save_img)
         controls.addWidget(self.chk_auto_save_img)
         controls.addStretch()
-        
+
         layout.addWidget(self.image_label)
         layout.addLayout(controls)
         return tab
@@ -683,40 +730,40 @@ class MainWindow(QMainWindow):
     def create_video_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        
+
         self.video_file_label = ZoomableLabel()
         self.video_file_label.fileDropped.connect(self.process_dropped_file)
-        
+
         self.video_progress = QProgressBar()
         self.video_progress.setValue(0)
-        
+
         controls = QHBoxLayout()
-        
+
         # Tracker (New)
         self.video_tracker_combo = QComboBox()
         self.video_tracker_combo.addItems(["None", "bytetrack.yaml", "botsort.yaml"])
         controls.addWidget(QLabel(Config.get("tracker")))
         controls.addWidget(self.video_tracker_combo)
-        
+
         self.btn_open_video = QPushButton(Config.get("open_video"))
         self.btn_open_video.setProperty("class", "ActionButton")
         self.btn_open_video.clicked.connect(self.open_video)
-        
+
         # Changed: Use Process Video toggle button
         self.btn_process_video = QPushButton(Config.get("process_video"))
         self.btn_process_video.setProperty("class", "ActionButton")
         self.btn_process_video.clicked.connect(self.toggle_video_process)
-        self.btn_process_video.setEnabled(False) # Disabled until loaded
-        
+        self.btn_process_video.setEnabled(False)  # Disabled until loaded
+
         self.chk_save_video_file = QCheckBox(Config.get("save_res"))
         self.chk_save_video_file.stateChanged.connect(self.toggle_video_file_save)
-        
+
         controls.addStretch()
         controls.addWidget(self.btn_open_video)
         controls.addWidget(self.chk_save_video_file)
         controls.addWidget(self.btn_process_video)
         controls.addStretch()
-        
+
         layout.addWidget(self.video_file_label)
         layout.addWidget(self.video_progress)
         layout.addLayout(controls)
@@ -725,7 +772,7 @@ class MainWindow(QMainWindow):
     def create_train_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        
+
         # Form
         form_layout = QVBoxLayout()
 
@@ -740,18 +787,18 @@ class MainWindow(QMainWindow):
         model_layout.addWidget(self.train_model_edit)
         model_layout.addWidget(btn_browse_model)
         form_layout.addLayout(model_layout)
-        
+
         # Data Path
         data_layout = QHBoxLayout()
         self.lbl_data = QLabel(Config.get("data_path"))
         data_layout.addWidget(self.lbl_data)
-        self.train_data_edit = QLabel("coco8.yaml") # Default
+        self.train_data_edit = QLabel("coco8.yaml")  # Default
         btn_browse = QPushButton("...")
         btn_browse.clicked.connect(self.browse_data)
         data_layout.addWidget(self.train_data_edit)
         data_layout.addWidget(btn_browse)
         form_layout.addLayout(data_layout)
-        
+
         # Hyperparams - 三个核心参数横排, 节省纵向空间
         hp_layout = QHBoxLayout()
         epochs_col = QVBoxLayout()
@@ -808,7 +855,7 @@ class MainWindow(QMainWindow):
         self.combo_rot_step.addItem("90°", 90)
         self.combo_rot_step.addItem("180°", 180)
         self.combo_rot_step.addItem("270°", 270)
-        self.combo_rot_step.setCurrentIndex(1)              # 默认 90°
+        self.combo_rot_step.setCurrentIndex(1)  # 默认 90°
         self.combo_rot_step.setFixedWidth(80)
         step_col.addWidget(self.lbl_aug_rot_step)
         step_col.addWidget(self.combo_rot_step)
@@ -821,7 +868,7 @@ class MainWindow(QMainWindow):
         self.combo_mirror.addItem(Config.get("aug_mirror_h"), "horizontal")
         self.combo_mirror.addItem(Config.get("aug_mirror_v"), "vertical")
         self.combo_mirror.addItem(Config.get("aug_mirror_both"), "both")
-        self.combo_mirror.setCurrentIndex(2)                # 默认 垂直
+        self.combo_mirror.setCurrentIndex(2)  # 默认 垂直
         self.combo_mirror.setFixedWidth(110)
         mirror_col.addWidget(self.lbl_aug_mirror)
         mirror_col.addWidget(self.combo_mirror)
@@ -831,19 +878,24 @@ class MainWindow(QMainWindow):
 
         # 5 个可独立开关的变换项
         self.chk_brightness, self.spin_brightness, _row = self._make_aug_row(
-            Config.get("aug_brightness"), "[1,255]", 1, 255, 20)
+            Config.get("aug_brightness"), "[1,255]", 1, 255, 20
+        )
         aug_layout.addLayout(_row)
         self.chk_brightness_pt, self.spin_brightness_pt, _row = self._make_aug_row(
-            Config.get("aug_brightness_pt"), "[1,255]", 1, 255, 20)
+            Config.get("aug_brightness_pt"), "[1,255]", 1, 255, 20
+        )
         aug_layout.addLayout(_row)
         self.chk_contrast, self.spin_contrast, _row = self._make_aug_row(
-            Config.get("aug_contrast"), "%", 0, 200, 20, " %")
+            Config.get("aug_contrast"), "%", 0, 200, 20, " %"
+        )
         aug_layout.addLayout(_row)
         self.chk_saturation, self.spin_saturation, _row = self._make_aug_row(
-            Config.get("aug_saturation"), "%", 0, 200, 20, " %")
+            Config.get("aug_saturation"), "%", 0, 200, 20, " %"
+        )
         aug_layout.addLayout(_row)
         self.chk_rot_range, self.spin_rot_range, _row = self._make_aug_row(
-            Config.get("aug_rot_range"), "°", 0, 45, 3, " °")
+            Config.get("aug_rot_range"), "°", 0, 45, 3, " °"
+        )
         aug_layout.addLayout(_row)
 
         self.lbl_aug_estimate = QLabel("")
@@ -863,7 +915,7 @@ class MainWindow(QMainWindow):
 
         self._connect_aug_signals()
         self._update_aug_estimate()
-        
+
         # Training Stats
         stats_group = QGroupBox("Training Status")
         stats_layout = QVBoxLayout()
@@ -877,14 +929,14 @@ class MainWindow(QMainWindow):
         stats_layout.addWidget(self.lbl_train_end)
         stats_group.setLayout(stats_layout)
         form_layout.addWidget(stats_group)
-        
+
         # Start / Stop Training (single toggle button)
         self.btn_train = QPushButton(Config.get("start_train"))
         self.btn_train.setProperty("class", "ActionButton")
         self.btn_train.clicked.connect(self.toggle_training)
         form_layout.addWidget(self.btn_train)
         self._training = False
-        
+
         self.train_progress = QProgressBar()
         self.train_progress.setValue(0)
         self.train_progress.setFormat("Epoch %v/%m")
@@ -892,11 +944,11 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(form_layout)
         layout.addStretch()
-        
+
         return tab
 
     def _num_row(self, spin):
-        """把 QSpinBox 包成 [spin][−][+] 一行, 用明确的按钮代替原生箭头。
+        """把 QSpinBox 包成 [spin][−][+] 一行, 用明确的按钮代替原生箭头。.
 
         原生 QSpinBox 上下箭头在某些 Windows/高DPI/打包环境下命中测试失效,
         点击无反应; 这里改用真实 QPushButton(命中区域大, 与样式/DPI 无关),
@@ -908,7 +960,7 @@ class MainWindow(QMainWindow):
         btn_minus = QPushButton("−")
         btn_plus = QPushButton("+")
         for b in (btn_minus, btn_plus):
-            b.setProperty("class", "NumButton")   # 实底高对比样式, 透明描边看不清
+            b.setProperty("class", "NumButton")  # 实底高对比样式, 透明描边看不清
             b.setFixedSize(28, 28)
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.setToolTip("减少 / 增加")
@@ -917,12 +969,12 @@ class MainWindow(QMainWindow):
         h.addWidget(spin)
         h.addWidget(btn_minus)
         h.addWidget(btn_plus)
-        spin._num_plus = btn_plus      # 便于自动化测试定位显式按钮
+        spin._num_plus = btn_plus  # 便于自动化测试定位显式按钮
         spin._num_minus = btn_minus
         return h
 
     def _make_aug_row(self, chk_text, unit, lo, hi, default, suffix=""):
-        """构造增强面板中的一行: [checkbox][单位说明][spinbox][−][+]。
+        """构造增强面板中的一行: [checkbox][单位说明][spinbox][−][+]。.
 
         checkbox 未勾选时 spinbox 自动置灰, 避免误以为该参数已生效。
         用明确的 −/+ 按钮代替原生箭头(原生箭头在部分环境下命中失效)。
@@ -944,18 +996,29 @@ class MainWindow(QMainWindow):
         return chk, spin, row
 
     def _connect_aug_signals(self):
-        """增强面板参数变化时刷新"预计生成数量"提示。"""
-        for w in (self.spin_aug_percent, self.spin_brightness, self.spin_brightness_pt,
-                  self.spin_contrast, self.spin_saturation, self.spin_rot_range):
+        """增强面板参数变化时刷新"预计生成数量"提示。."""
+        for w in (
+            self.spin_aug_percent,
+            self.spin_brightness,
+            self.spin_brightness_pt,
+            self.spin_contrast,
+            self.spin_saturation,
+            self.spin_rot_range,
+        ):
             w.valueChanged.connect(self._update_aug_estimate)
-        for c in (self.chk_brightness, self.chk_brightness_pt, self.chk_contrast,
-                  self.chk_saturation, self.chk_rot_range):
+        for c in (
+            self.chk_brightness,
+            self.chk_brightness_pt,
+            self.chk_contrast,
+            self.chk_saturation,
+            self.chk_rot_range,
+        ):
             c.toggled.connect(self._update_aug_estimate)
         self.combo_rot_step.currentIndexChanged.connect(self._update_aug_estimate)
         self.combo_mirror.currentIndexChanged.connect(self._update_aug_estimate)
 
     def _update_aug_estimate(self):
-        """估算每张原图会生成多少张变体, 与 AugmentWorker 的生成逻辑保持一致。"""
+        """估算每张原图会生成多少张变体, 与 AugmentWorker 的生成逻辑保持一致。."""
         step = self.combo_rot_step.currentData() or 0
         n = 0
         n += 1 if (self.combo_mirror.currentData() or "none") != "none" else 0
@@ -966,7 +1029,8 @@ class MainWindow(QMainWindow):
         n += 1 if self.chk_contrast.isChecked() else 0
         n += 1 if self.chk_saturation.isChecked() else 0
         self.lbl_aug_estimate.setText(
-            f"预计每张原图生成 {n} 张变体; 输出到 <数据集名>_aug/ (含原图副本, 不改动原数据集)")
+            f"预计每张原图生成 {n} 张变体; 输出到 <数据集名>_aug/ (含原图副本, 不改动原数据集)"
+        )
 
     def create_val_tab(self):
         tab = QWidget()
@@ -1036,9 +1100,7 @@ class MainWindow(QMainWindow):
 
         self.val_perclass_table = QTableWidget()
         self.val_perclass_table.setColumnCount(7)
-        self.val_perclass_table.setHorizontalHeaderLabels(
-            ["类别", "图像数", "实例数", "P", "R", "mAP50", "mAP50-95"]
-        )
+        self.val_perclass_table.setHorizontalHeaderLabels(["类别", "图像数", "实例数", "P", "R", "mAP50", "mAP50-95"])
         self.val_perclass_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         form_layout.addWidget(self.val_perclass_table)
 
@@ -1065,9 +1127,9 @@ class MainWindow(QMainWindow):
     def create_export_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        
+
         form_layout = QVBoxLayout()
-        
+
         # Model Path
         model_layout = QHBoxLayout()
         self.lbl_export_model = QLabel(Config.get("model_path"))
@@ -1079,7 +1141,7 @@ class MainWindow(QMainWindow):
         model_layout.addWidget(self.export_model_edit)
         model_layout.addWidget(btn_browse_model)
         form_layout.addLayout(model_layout)
-        
+
         # Format Selector
         self.combo_format = QComboBox()
         # Friendly names mapped to format strings
@@ -1093,15 +1155,15 @@ class MainWindow(QMainWindow):
             "TensorFlow SavedModel - TensorFlow 格式": "saved_model",
             "TensorFlow GraphDef (.pb) - TensorFlow 冻结图": "pb",
             "NCNN - 腾讯移动端框架": "ncnn",
-            "PaddlePaddle - 百度飞桨框架": "paddle"
+            "PaddlePaddle - 百度飞桨框架": "paddle",
         }
         self.combo_format.addItems(self.export_formats.keys())
         form_layout.addWidget(QLabel(Config.get("export_format")))
         form_layout.addWidget(self.combo_format)
-        
+
         # Export Options
         opts_layout = QVBoxLayout()
-        
+
         # Image Size
         imgsz_layout = QHBoxLayout()
         imgsz_layout.addWidget(QLabel(f"{Config.get('imgsz')} (导出模型的输入尺寸):"))
@@ -1110,13 +1172,13 @@ class MainWindow(QMainWindow):
         self.spin_export_imgsz.setValue(640)
         imgsz_layout.addLayout(self._num_row(self.spin_export_imgsz))
         opts_layout.addLayout(imgsz_layout)
-        
+
         # Checkboxes
         self.chk_half = QCheckBox("FP16 (Half) - 半精度导出，减小体积并加速 (需 GPU 支持)")
         self.chk_int8 = QCheckBox("INT8 - 8位量化，极致加速和压缩 (需校准数据)")
         self.chk_dynamic = QCheckBox("Dynamic Axes - 动态输入尺寸 (仅 ONNX/TensorRT)")
         self.chk_simplify = QCheckBox("Simplify - 简化模型结构，提升兼容性 (仅 ONNX)")
-        
+
         opts_layout.addWidget(self.chk_half)
         opts_layout.addWidget(self.chk_int8)
         opts_layout.addWidget(self.chk_dynamic)
@@ -1143,14 +1205,14 @@ class MainWindow(QMainWindow):
         # 根据所选导出格式联动启用/禁用选项（防止导出失败）
         self.combo_format.currentIndexChanged.connect(self._on_export_format_changed)
         self._on_export_format_changed()  # 初始化一次当前格式的状态
-        
+
         form_layout.addLayout(opts_layout)
-        
+
         self.btn_export = QPushButton(Config.get("export_model"))
         self.btn_export.setProperty("class", "ActionButton")
         self.btn_export.clicked.connect(self.export_model)
         form_layout.addWidget(self.btn_export)
-        
+
         layout.addLayout(form_layout)
         layout.addStretch()
         return tab
@@ -1158,7 +1220,7 @@ class MainWindow(QMainWindow):
     # ---------------- Anomaly (DINOv3 异常检测: 建库/验证/导出) ----------------
     @staticmethod
     def _make_path_row(label_text, initial="", on_browse=None):
-        """构造"标签 + 只读路径 + 浏览按钮"的一行,返回 (layout, edit)。"""
+        """构造"标签 + 只读路径 + 浏览按钮"的一行,返回 (layout, edit)。."""
         row = QHBoxLayout()
         row.addWidget(QLabel(label_text))
         edit = QLabel(initial)
@@ -1179,12 +1241,9 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(content)
 
         root = os.path.dirname(os.path.abspath(__file__))
-        default_weights = os.path.join(
-            root, "docs", "DINVo3",
-            "dinov3_vits16_pretrain_lvd1689m-08c60483.pth")
+        default_weights = os.path.join(root, "docs", "DINVo3", "dinov3_vits16_pretrain_lvd1689m-08c60483.pth")
         default_bank = os.path.join(root, "models", "anomaly_bank.npz")
-        default_onnx = os.path.join(root, "models",
-                                    "dinov3_vits16_anomaly.onnx")
+        default_onnx = os.path.join(root, "models", "dinov3_vits16_anomaly.onnx")
         default_out = os.path.join(root, "out", "anomaly")
 
         # ---- 区块一:特征库建库 ----
@@ -1194,20 +1253,22 @@ class MainWindow(QMainWindow):
         mrow = QHBoxLayout()
         mrow.addWidget(QLabel("Backbone"))
         self.combo_anomaly_model = QComboBox()
-        self.combo_anomaly_model.addItems([
-            "dinov3_vits16", "dinov3_vits16plus", "dinov3_vitb16",
-            "dinov3_convnext_tiny", "dinov3_convnext_small"])
+        self.combo_anomaly_model.addItems(
+            ["dinov3_vits16", "dinov3_vits16plus", "dinov3_vitb16", "dinov3_convnext_tiny", "dinov3_convnext_small"]
+        )
         mrow.addWidget(self.combo_anomaly_model)
         bl.addLayout(mrow)
 
         row, self.anomaly_weights_edit = self._make_path_row(
             Config.get("anomaly_weights"),
             default_weights if os.path.isfile(default_weights) else "",
-            self.browse_anomaly_weights)
+            self.browse_anomaly_weights,
+        )
         bl.addLayout(row)
 
         row, self.anomaly_good_edit = self._make_path_row(
-            Config.get("anomaly_good_dir"), "", self.browse_anomaly_good_dir)
+            Config.get("anomaly_good_dir"), "", self.browse_anomaly_good_dir
+        )
         bl.addLayout(row)
 
         srow = QHBoxLayout()
@@ -1219,8 +1280,8 @@ class MainWindow(QMainWindow):
         bl.addLayout(srow)
 
         row, self.anomaly_bank_out_edit = self._make_path_row(
-            Config.get("anomaly_bank_out"), default_bank,
-            self.browse_anomaly_bank_out)
+            Config.get("anomaly_bank_out"), default_bank, self.browse_anomaly_bank_out
+        )
         bl.addLayout(row)
 
         self.btn_anomaly_build = QPushButton(Config.get("anomaly_start_build"))
@@ -1234,25 +1295,24 @@ class MainWindow(QMainWindow):
         vl = QVBoxLayout(val_group)
 
         row, self.anomaly_bank_edit = self._make_path_row(
-            Config.get("anomaly_bank_file"), default_bank,
-            self.browse_anomaly_bank)
+            Config.get("anomaly_bank_file"), default_bank, self.browse_anomaly_bank
+        )
         vl.addLayout(row)
 
         row, self.anomaly_tgood_edit = self._make_path_row(
-            Config.get("anomaly_test_good"), "", self.browse_anomaly_tgood)
+            Config.get("anomaly_test_good"), "", self.browse_anomaly_tgood
+        )
         vl.addLayout(row)
 
-        row, self.anomaly_tng_edit = self._make_path_row(
-            Config.get("anomaly_test_ng"), "", self.browse_anomaly_tng)
+        row, self.anomaly_tng_edit = self._make_path_row(Config.get("anomaly_test_ng"), "", self.browse_anomaly_tng)
         vl.addLayout(row)
 
         row, self.anomaly_val_out_edit = self._make_path_row(
-            Config.get("anomaly_val_out"), default_out,
-            self.browse_anomaly_val_out)
+            Config.get("anomaly_val_out"), default_out, self.browse_anomaly_val_out
+        )
         vl.addLayout(row)
 
-        self.btn_anomaly_validate = QPushButton(
-            Config.get("anomaly_start_validate"))
+        self.btn_anomaly_validate = QPushButton(Config.get("anomaly_start_validate"))
         self.btn_anomaly_validate.setProperty("class", "ActionButton")
         self.btn_anomaly_validate.clicked.connect(self.start_anomaly_validate)
         vl.addWidget(self.btn_anomaly_validate)
@@ -1262,20 +1322,18 @@ class MainWindow(QMainWindow):
         self.anomaly_result_text = QTextEdit()
         self.anomaly_result_text.setReadOnly(True)
         self.anomaly_result_text.setMinimumHeight(170)
-        self.anomaly_result_text.setPlaceholderText(
-            "AUROC / 建议阈值 / 分数分布(验证后显示)")
+        self.anomaly_result_text.setPlaceholderText("AUROC / 建议阈值 / 分数分布(验证后显示)")
         layout.addWidget(self.anomaly_result_text)
 
         # ---- 区块三:导出 ONNX ----
         exp_group = QGroupBox(Config.get("anomaly_export_group"))
         el = QVBoxLayout(exp_group)
         row, self.anomaly_onnx_edit = self._make_path_row(
-            Config.get("anomaly_onnx_out"), default_onnx,
-            self.browse_anomaly_onnx)
+            Config.get("anomaly_onnx_out"), default_onnx, self.browse_anomaly_onnx
+        )
         el.addLayout(row)
 
-        self.btn_anomaly_export = QPushButton(
-            Config.get("anomaly_start_export"))
+        self.btn_anomaly_export = QPushButton(Config.get("anomaly_start_export"))
         self.btn_anomaly_export.setProperty("class", "ActionButton")
         self.btn_anomaly_export.clicked.connect(self.start_anomaly_export)
         el.addWidget(self.btn_anomaly_export)
@@ -1287,8 +1345,7 @@ class MainWindow(QMainWindow):
         return tab
 
     def browse_anomaly_weights(self):
-        f, _ = QFileDialog.getOpenFileName(self, "Select Weights", "",
-                                           "Weights (*.pth)")
+        f, _ = QFileDialog.getOpenFileName(self, "Select Weights", "", "Weights (*.pth)")
         if f:
             self.anomaly_weights_edit.setText(f)
 
@@ -1298,14 +1355,12 @@ class MainWindow(QMainWindow):
             self.anomaly_good_edit.setText(d)
 
     def browse_anomaly_bank_out(self):
-        f, _ = QFileDialog.getSaveFileName(self, "Bank Output", "",
-                                           "Bank (*.npz)")
+        f, _ = QFileDialog.getSaveFileName(self, "Bank Output", "", "Bank (*.npz)")
         if f:
             self.anomaly_bank_out_edit.setText(f)
 
     def browse_anomaly_bank(self):
-        f, _ = QFileDialog.getOpenFileName(self, "Select Bank", "",
-                                           "Bank (*.npz)")
+        f, _ = QFileDialog.getOpenFileName(self, "Select Bank", "", "Bank (*.npz)")
         if f:
             self.anomaly_bank_edit.setText(f)
 
@@ -1325,15 +1380,13 @@ class MainWindow(QMainWindow):
             self.anomaly_val_out_edit.setText(d)
 
     def browse_anomaly_onnx(self):
-        f, _ = QFileDialog.getSaveFileName(self, "ONNX Output", "",
-                                           "ONNX (*.onnx)")
+        f, _ = QFileDialog.getSaveFileName(self, "ONNX Output", "", "ONNX (*.onnx)")
         if f:
             self.anomaly_onnx_edit.setText(f)
 
     def _anomaly_params(self):
-        """当前异常检测页选中的 (骨干名, 权重路径)。"""
-        return (self.combo_anomaly_model.currentText().strip(),
-                self.anomaly_weights_edit.text().strip())
+        """当前异常检测页选中的 (骨干名, 权重路径)。."""
+        return (self.combo_anomaly_model.currentText().strip(), self.anomaly_weights_edit.text().strip())
 
     def start_anomaly_build(self):
         model, weights = self._anomaly_params()
@@ -1356,15 +1409,16 @@ class MainWindow(QMainWindow):
         self.log(f"本次特征库输出:{out}")
         self.btn_anomaly_build.setEnabled(False)
         self.anomaly_build_worker = AnomalyBuildWorker(
-            model, weights, "", good, out, self.spin_anomaly_bank.value(),
-            self.current_device)
+            model, weights, "", good, out, self.spin_anomaly_bank.value(), self.current_device
+        )
         self.anomaly_build_worker.log_signal.connect(self.log)
         self.anomaly_build_worker.result_signal.connect(
             lambda info: self.log(
                 f"建库完成:{info.get('patches_bank')} 条向量"
-                f"(原始 {info.get('patches_raw')},来自 {info.get('images')} 张图)"))
-        self.anomaly_build_worker.finished_signal.connect(
-            lambda: self.btn_anomaly_build.setEnabled(True))
+                f"(原始 {info.get('patches_raw')},来自 {info.get('images')} 张图)"
+            )
+        )
+        self.anomaly_build_worker.finished_signal.connect(lambda: self.btn_anomaly_build.setEnabled(True))
         self.anomaly_build_worker.start()
 
     def start_anomaly_validate(self):
@@ -1385,17 +1439,15 @@ class MainWindow(QMainWindow):
         self.btn_anomaly_validate.setEnabled(False)
         self.anomaly_result_text.setPlainText("验证中,请稍候 ...")
         self.anomaly_validate_worker = AnomalyValidateWorker(
-            model, weights, "", bank, tgood, tng, out_dir,
-            self.current_device)
+            model, weights, "", bank, tgood, tng, out_dir, self.current_device
+        )
         self.anomaly_validate_worker.log_signal.connect(self.log)
-        self.anomaly_validate_worker.result_signal.connect(
-            self.on_anomaly_result)
-        self.anomaly_validate_worker.finished_signal.connect(
-            lambda: self.btn_anomaly_validate.setEnabled(True))
+        self.anomaly_validate_worker.result_signal.connect(self.on_anomaly_result)
+        self.anomaly_validate_worker.finished_signal.connect(lambda: self.btn_anomaly_validate.setEnabled(True))
         self.anomaly_validate_worker.start()
 
     def on_anomaly_result(self, lines):
-        """把验证摘要(AUROC/阈值/分数分布)显示到结果框。"""
+        """把验证摘要(AUROC/阈值/分数分布)显示到结果框。."""
         self.anomaly_result_text.setPlainText("\n".join(lines))
         self.log("异常检测验证完成,结果已显示;热力图在输出目录 heatmap/ 下。")
 
@@ -1409,11 +1461,9 @@ class MainWindow(QMainWindow):
             self.log("请先设置 ONNX 输出路径")
             return
         self.btn_anomaly_export.setEnabled(False)
-        self.anomaly_export_worker = AnomalyExportWorker(
-            model, weights, "", out, self.current_device)
+        self.anomaly_export_worker = AnomalyExportWorker(model, weights, "", out, self.current_device)
         self.anomaly_export_worker.log_signal.connect(self.log)
-        self.anomaly_export_worker.finished_signal.connect(
-            lambda: self.btn_anomaly_export.setEnabled(True))
+        self.anomaly_export_worker.finished_signal.connect(lambda: self.btn_anomaly_export.setEnabled(True))
         self.anomaly_export_worker.start()
 
     # ==================================================================
@@ -1439,8 +1489,8 @@ class MainWindow(QMainWindow):
         if not self.rfdetr_ok:
             self.rfdetr_warn.setText(Config.get("rfdetr_missing"))
             self.rfdetr_warn.setStyleSheet(
-                "color: #D9534F; background: rgba(217,83,79,0.10); "
-                "padding: 8px; border-radius: 6px;")
+                "color: #D9534F; background: rgba(217,83,79,0.10); padding: 8px; border-radius: 6px;"
+            )
         layout.addWidget(self.rfdetr_warn)
 
         # ================= 训练 =================
@@ -1451,7 +1501,7 @@ class MainWindow(QMainWindow):
         # 模型变体
         self.rf_variant = QComboBox()
         self.rf_variant.addItems(list(RFDETR_VARIANTS.keys()))
-        self.rf_variant.setCurrentText("Nano")   # 4GB 显存默认最小变体
+        self.rf_variant.setCurrentText("Nano")  # 4GB 显存默认最小变体
         f_train.addRow(Config.get("rfdetr_variant"), self.rf_variant)
 
         # 数据集 YAML
@@ -1480,17 +1530,21 @@ class MainWindow(QMainWindow):
         self.rf_batch.setValue(0)
         self.rf_batch.setFixedWidth(90)
         self.rf_batch.setSpecialValueText(Config.get("rfdetr_batch_auto"))
-        self.rf_batch.setToolTip("设为 0（auto）时由本程序按当前可用显存选一个安全整数批次；"
-                                 "注意：RF-DETR 自带的 auto 探测在 4GB 卡上会 OOM 硬崩，故不直接透传")
+        self.rf_batch.setToolTip(
+            "设为 0（auto）时由本程序按当前可用显存选一个安全整数批次；"
+            "注意：RF-DETR 自带的 auto 探测在 4GB 卡上会 OOM 硬崩，故不直接透传"
+        )
 
         self.rf_grad = QSpinBox()
         self.rf_grad.setRange(1, 64)
         self.rf_grad.setValue(4)
         self.rf_grad.setFixedWidth(90)
 
-        for label, spin in ((Config.get("rfdetr_epochs"), self.rf_epochs),
-                            (Config.get("rfdetr_batch"), self.rf_batch),
-                            (Config.get("rfdetr_grad_accum"), self.rf_grad)):
+        for label, spin in (
+            (Config.get("rfdetr_epochs"), self.rf_epochs),
+            (Config.get("rfdetr_batch"), self.rf_batch),
+            (Config.get("rfdetr_grad_accum"), self.rf_grad),
+        ):
             col = QVBoxLayout()
             col.setSpacing(2)
             col.addWidget(QLabel(label))
@@ -1562,8 +1616,7 @@ class MainWindow(QMainWindow):
 
         # 指标表格
         self.rf_metrics = QTableWidget(0, 2)
-        self.rf_metrics.setHorizontalHeaderLabels(
-            [Config.get("rfdetr_metric"), Config.get("rfdetr_value")])
+        self.rf_metrics.setHorizontalHeaderLabels([Config.get("rfdetr_metric"), Config.get("rfdetr_value")])
         self.rf_metrics.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.rf_metrics.setMaximumHeight(180)
         f_val.addRow(self.rf_metrics)
@@ -1604,13 +1657,12 @@ class MainWindow(QMainWindow):
         self.rfdetr_train_worker = None
         self.rfdetr_eval_worker = None
         self.rfdetr_export_worker = None
-        self.rf_run_dir = None      # 当前训练产物目录（rfdetr_output/trainN）
+        self.rf_run_dir = None  # 当前训练产物目录（rfdetr_output/trainN）
         return tab
 
     # ---------- RF-DETR 浏览按钮 ----------
     def _rf_browse_data(self):
-        p, _ = QFileDialog.getOpenFileName(
-            self, "选择数据集 YAML", os.getcwd(), "YAML (*.yaml *.yml)")
+        p, _ = QFileDialog.getOpenFileName(self, "选择数据集 YAML", os.getcwd(), "YAML (*.yaml *.yml)")
         if p:
             self.rf_data.setText(p)
 
@@ -1620,19 +1672,19 @@ class MainWindow(QMainWindow):
             self.rf_out_dir.setText(p)
 
     def _rf_browse_ckpt(self):
-        p, _ = QFileDialog.getOpenFileName(
-            self, "选择权重", os.getcwd(), "PyTorch (*.pth *.pt)")
+        p, _ = QFileDialog.getOpenFileName(self, "选择权重", os.getcwd(), "PyTorch (*.pth *.pt)")
         if p:
             self.rf_ckpt.setText(p)
 
     # ---------- RF-DETR 输出目录：train1 / train2… 自动递增 ----------
     def _rf_next_run_dir(self):
-        """在输出目录下取下一个 trainN 子目录（train1、train2…），类似 Ultralytics。
+        r"""在输出目录下取下一个 trainN 子目录（train1、train2…），类似 Ultralytics。.
 
         rf_out_dir 里填的是「项目目录」（如 <项目根>\\rfdetr_output），
         每次训练自动往下一级建 trainN，避免多次训练产物互相覆盖。
         """
         import re
+
         base = self.rf_out_dir.text().strip() or "rfdetr_output"
         os.makedirs(base, exist_ok=True)
         nums = []
@@ -1647,11 +1699,12 @@ class MainWindow(QMainWindow):
         return d
 
     def _rf_current_run_dir(self):
-        """当前（或最近一次）训练的产物目录 trainN，导出时复用，保证产物在一起。"""
+        """当前（或最近一次）训练的产物目录 trainN，导出时复用，保证产物在一起。."""
         d = getattr(self, "rf_run_dir", None)
         if d and os.path.isdir(d):
             return d
         import re
+
         base = self.rf_out_dir.text().strip() or "rfdetr_output"
         best = 0
         if os.path.isdir(base):
@@ -1664,7 +1717,7 @@ class MainWindow(QMainWindow):
 
     # ---------- RF-DETR 开始 / 停止（同一个按钮） ----------
     def _rf_toggle_train(self):
-        """开始 / 停止 二合一：训练中点击即停止。"""
+        """开始 / 停止 二合一：训练中点击即停止。."""
         w = self.rfdetr_train_worker
         if w is not None and w.isRunning():
             self.stop_rfdetr_train()
@@ -1672,43 +1725,45 @@ class MainWindow(QMainWindow):
             self.start_rfdetr_train()
 
     def _rf_set_train_btn(self, busy: bool):
-        """busy=True 显示「停止训练」，否则显示「开始训练」。"""
-        self.rf_btn_train.setText(
-            Config.get("rfdetr_stop_train") if busy else Config.get("rfdetr_start_train"))
+        """busy=True 显示「停止训练」，否则显示「开始训练」。."""
+        self.rf_btn_train.setText(Config.get("rfdetr_stop_train") if busy else Config.get("rfdetr_start_train"))
         self.rf_btn_train.setEnabled(True)
 
     # ---------- 显存回收 ----------
     def _busy_infer_threads(self):
-        """返回仍在跑推理/训练的线程名；全停则返回空列表。"""
+        """返回仍在跑推理/训练的线程名；全停则返回空列表。."""
         out = []
-        for name, w in (("实时相机", self.thread),
-                        ("图片检测", self.image_worker),
-                        ("视频检测", self.video_file_worker),
-                        ("YOLO 训练", self.train_worker)):
+        for name, w in (
+            ("实时相机", self.thread),
+            ("图片检测", self.image_worker),
+            ("视频检测", self.video_file_worker),
+            ("YOLO 训练", self.train_worker),
+        ):
             if w is not None and getattr(w, "isRunning", lambda: False)():
                 out.append(name)
         return out
 
     def _free_vram(self):
-        """回收 PyTorch 缓存分配器保留的显存，返回释放的 MB。"""
+        """回收 PyTorch 缓存分配器保留的显存，返回释放的 MB。."""
         try:
             import gc
+
             import torch
+
             if not torch.cuda.is_available():
                 return 0.0
             before = torch.cuda.memory_reserved()
             gc.collect()
             torch.cuda.empty_cache()
-            return max(0.0, (before - torch.cuda.memory_reserved()) / (1024 ** 2))
+            return max(0.0, (before - torch.cuda.memory_reserved()) / (1024**2))
         except Exception:
             return 0.0
 
     def _purge_before_job(self, tag="任务"):
-        """训练/验证前统一清一次显存，并提示是否有推理任务抢显存。"""
+        """训练/验证前统一清一次显存，并提示是否有推理任务抢显存。."""
         busy = self._busy_infer_threads()
         if busy:
-            self.log(f"[{tag}] 注意：仍有任务在跑（{'、'.join(busy)}），"
-                     f"其显存可能无法释放，建议先停止它们再开始")
+            self.log(f"[{tag}] 注意：仍有任务在跑（{'、'.join(busy)}），其显存可能无法释放，建议先停止它们再开始")
         freed = self._free_vram()
         if freed > 1:
             self.log(f"[{tag}] 已回收 {freed:.0f} MB 显存缓存")
@@ -1739,7 +1794,7 @@ class MainWindow(QMainWindow):
             self.log("· " + str(_n))
 
         self.log(f"数据集就绪：{info['dataset_dir']}（{info['num_classes']} 类）")
-        ensure_rf_home()   # 权重缓存重定向到项目所在盘
+        ensure_rf_home()  # 权重缓存重定向到项目所在盘
 
         # 开训前清一次显存缓存，并检查有没有推理线程抢显存
         self._purge_before_job("RF-DETR")
@@ -1750,7 +1805,9 @@ class MainWindow(QMainWindow):
         # 绝不直接把 "auto" 传给 RF-DETR——传具体整数会让它跳过探测分支。
         if self.rf_batch.value() == 0:
             resolved = suggest_rf_batch()
-            self.log(f"· batch 设为 auto：按当前可用显存自动选定为 {resolved}（不调用 RF-DETR 自带探测，避免 OOM 硬崩）")
+            self.log(
+                f"· batch 设为 auto：按当前可用显存自动选定为 {resolved}（不调用 RF-DETR 自带探测，避免 OOM 硬崩）"
+            )
             batch = resolved
         else:
             batch = int(self.rf_batch.value())
@@ -1769,7 +1826,7 @@ class MainWindow(QMainWindow):
             lr=float(self.rf_lr.value()),
             output_dir=run_dir,
             use_ema=self.rf_use_ema.isChecked(),
-            num_workers=0,        # Windows 下避免多进程 dataloader 问题
+            num_workers=0,  # Windows 下避免多进程 dataloader 问题
         )
         self.rfdetr_train_worker.log_signal.connect(self.log)
         self.rfdetr_train_worker.progress_signal.connect(self._rf_update_progress)
@@ -1793,8 +1850,7 @@ class MainWindow(QMainWindow):
         self.log(f"RF-DETR 训练{'成功' if ok else '失败'}：{msg}")
         if ok:
             # 训练完自动把最佳权重填进验证/导出的权重框，减少手工步骤
-            run_dir = getattr(self, "rf_run_dir", None) or (
-                self.rf_out_dir.text().strip() or "rfdetr_output")
+            run_dir = getattr(self, "rf_run_dir", None) or (self.rf_out_dir.text().strip() or "rfdetr_output")
             best = os.path.join(run_dir, "checkpoint_best_regular.pth")
             if os.path.isfile(best):
                 self.rf_ckpt.setText(best)
@@ -1837,8 +1893,7 @@ class MainWindow(QMainWindow):
         )
         self.rfdetr_eval_worker.log_signal.connect(self.log)
         self.rfdetr_eval_worker.result_signal.connect(self._rf_show_metrics)
-        self.rfdetr_eval_worker.finished_signal.connect(
-            lambda ok, m: self.rf_btn_val.setEnabled(True))
+        self.rfdetr_eval_worker.finished_signal.connect(lambda ok, m: self.rf_btn_val.setEnabled(True))
         self.rf_btn_val.setEnabled(False)
         self.rfdetr_eval_worker.start()
 
@@ -1872,17 +1927,16 @@ class MainWindow(QMainWindow):
             dynamic_batch=self.rf_dyn_batch.isChecked(),
         )
         self.rfdetr_export_worker.log_signal.connect(self.log)
-        self.rfdetr_export_worker.finished_signal.connect(
-            lambda ok, m: self.rf_btn_export.setEnabled(True))
+        self.rfdetr_export_worker.finished_signal.connect(lambda ok, m: self.rf_btn_export.setEnabled(True))
         self.rf_btn_export.setEnabled(False)
         self.rfdetr_export_worker.start()
 
     def create_benchmark_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        
+
         form_layout = QVBoxLayout()
-        
+
         # Model Path
         model_layout = QHBoxLayout()
         self.lbl_bench_model = QLabel(Config.get("model_path"))
@@ -1894,7 +1948,7 @@ class MainWindow(QMainWindow):
         model_layout.addWidget(self.bench_model_edit)
         model_layout.addWidget(btn_browse_model)
         form_layout.addLayout(model_layout)
-        
+
         # Data Path
         data_layout = QHBoxLayout()
         self.lbl_bench_data = QLabel(Config.get("data_path"))
@@ -1905,7 +1959,7 @@ class MainWindow(QMainWindow):
         data_layout.addWidget(self.bench_data_edit)
         data_layout.addWidget(btn_browse_data)
         form_layout.addLayout(data_layout)
-        
+
         self.spin_bench_imgsz = QSpinBox()
         self.spin_bench_imgsz.setRange(32, 1280)
         self.spin_bench_imgsz.setValue(640)
@@ -1934,9 +1988,7 @@ class MainWindow(QMainWindow):
         # 基准测试结果表
         self.bench_results_table = QTableWidget()
         self.bench_results_table.setColumnCount(6)
-        self.bench_results_table.setHorizontalHeaderLabels(
-            ["格式", "设备", "imgsz", "参数量(M)", "延迟(ms)", "FPS"]
-        )
+        self.bench_results_table.setHorizontalHeaderLabels(["格式", "设备", "imgsz", "参数量(M)", "延迟(ms)", "FPS"])
         self.bench_results_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.bench_results_table.setFixedHeight(150)
         form_layout.addWidget(self.bench_results_table)
@@ -1953,6 +2005,7 @@ class MainWindow(QMainWindow):
 
     def _scroll_console_to_bottom(self):
         from PyQt6.QtGui import QTextCursor
+
         cursor = self.console.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         self.console.setTextCursor(cursor)
@@ -1968,16 +2021,15 @@ class MainWindow(QMainWindow):
 
     def refresh_models(self):
         # Scan weights folder and current directory (support all exported model formats)
-        exts = ("*.pt", "*.onnx", "*.engine", "*.tflite", "*.torchscript",
-                "*.mlpackage", "*.xml", "*.pb", "*.param")
+        exts = ("*.pt", "*.onnx", "*.engine", "*.tflite", "*.torchscript", "*.mlpackage", "*.xml", "*.pb", "*.param")
         models = []
         for ext in exts:
             models += glob.glob(os.path.join("weights", ext)) + glob.glob(ext)
         # Remove duplicates and get basenames
-        model_names = sorted(list(set([os.path.basename(m) for m in models])))
+        model_names = sorted({os.path.basename(m) for m in models})
         if not model_names:
-            model_names = ["yolo26n.pt"] # Default fallback
-            
+            model_names = ["yolo26n.pt"]  # Default fallback
+
         current_combo = self.model_combo.currentText()
         self.model_combo.clear()
         self.model_combo.addItems(model_names)
@@ -1988,12 +2040,12 @@ class MainWindow(QMainWindow):
         self.det_model_combo.addItems(model_names)
         if current_det in model_names:
             self.det_model_combo.setCurrentText(current_det)
-        
+
         # Priority:
         # 1. Previously selected item in combobox (if refreshing manually)
         # 2. self.current_model (on startup)
         # 3. First item in list
-        
+
         target_model = None
         if current_combo and current_combo in model_names:
             target_model = current_combo
@@ -2001,41 +2053,42 @@ class MainWindow(QMainWindow):
             target_model = os.path.basename(self.current_model)
         elif model_names:
             target_model = model_names[0]
-            
+
         if target_model:
             self.model_combo.setCurrentText(target_model)
             # Ensure self.current_model matches what is displayed if we just loaded
             # trigger change_model to ensure consistency
             if self.current_model != target_model and os.path.basename(self.current_model) != target_model:
-                 self.change_model(target_model)
-            
+                self.change_model(target_model)
+
         # Visual feedback
         self.refresh_btn.setText("✔")
         QTimer.singleShot(1000, lambda: self.refresh_btn.setText(Config.get("refresh_models")))
 
     def change_model(self, model_name):
-        if not model_name: return
-        
+        if not model_name:
+            return
+
         # Check if it's in weights/ or root
         if os.path.exists(os.path.join("weights", model_name)):
             self.current_model = os.path.join("weights", model_name)
         else:
             self.current_model = model_name
-            
+
         self.log(f"Model changed to {self.current_model}")
         self._sync_det_model()
         if self.thread and self.thread.isRunning():
             self.thread.stop()
-            self.toggle_camera() # Restart with new model if running
+            self.toggle_camera()  # Restart with new model if running
 
     def _sync_det_model(self):
-        """维护检测模型下拉框：仅深度模型时启用，并自动建议同名检测模型。"""
-        is_depth = 'depth' in os.path.basename(self.current_model).lower()
+        """维护检测模型下拉框：仅深度模型时启用，并自动建议同名检测模型。."""
+        is_depth = "depth" in os.path.basename(self.current_model).lower()
         self.det_model_combo.setEnabled(is_depth)
         if not is_depth:
             return
-        base = os.path.basename(self.current_model).split('-depth')[0]
-        cand = base + '.pt'
+        base = os.path.basename(self.current_model).split("-depth")[0]
+        cand = base + ".pt"
         names = [self.det_model_combo.itemText(i) for i in range(self.det_model_combo.count())]
         if cand in names and self.det_model_combo.currentText() != cand:
             self.det_model_combo.setCurrentText(cand)
@@ -2053,29 +2106,30 @@ class MainWindow(QMainWindow):
         self.log(f"Detection model set to {self.det_model_path}")
 
     def _active_det_model(self):
-        """仅当主模型为深度模型时返回检测模型路径，否则 None。"""
-        if 'depth' not in os.path.basename(self.current_model).lower():
+        """仅当主模型为深度模型时返回检测模型路径，否则 None。."""
+        if "depth" not in os.path.basename(self.current_model).lower():
             return None
-        return getattr(self, 'det_model_path', None)
+        return getattr(self, "det_model_path", None)
 
     def change_device(self):
         if self.radio_cpu.isChecked():
-            self.current_device = 'cpu'
+            self.current_device = "cpu"
         else:
             # Verify CUDA availability before committing to GPU to avoid hard crashes
             try:
                 import torch
+
                 _cuda_ok = torch.cuda.is_available()
             except Exception:
                 _cuda_ok = False
             if _cuda_ok:
-                self.current_device = '0' # Default GPU 0
+                self.current_device = "0"  # Default GPU 0
             else:
-                self.current_device = 'cpu'
+                self.current_device = "cpu"
                 self.log("警告：当前环境 CUDA 不可用，已自动回退到 CPU 推理。")
-            
+
         self.log(f"Inference device changed to: {self.current_device}")
-        
+
         # Update running threads
         if self.thread:
             self.thread.update_device(self.current_device)
@@ -2085,7 +2139,7 @@ class MainWindow(QMainWindow):
     def update_params(self):
         conf = self.conf_slider.value() / 100.0
         iou = self.iou_slider.value() / 100.0
-        
+
         self.lbl_conf.setText(f"{Config.get('conf')}: {conf:.2f}")
         self.lbl_iou.setText(f"{Config.get('iou')}: {iou:.2f}")
 
@@ -2099,7 +2153,7 @@ class MainWindow(QMainWindow):
         self.lang_btn.setText(Config.get("lang_en") if Config.LANG == "CN" else Config.get("lang_cn"))
         self.theme_btn.setText(Config.get("theme_light") if Theme.CURRENT_THEME == "Dark" else Config.get("theme_dark"))
         self.dock.setWindowTitle(Config.get("control_panel"))
-        
+
         # Nav Buttons
         # nav_keys logic is now replaced by self.nav_items iteration
         for i, btn in enumerate(self.nav_buttons):
@@ -2111,18 +2165,18 @@ class MainWindow(QMainWindow):
                 # Re-generate icon in case theme color changed (though pixmap is static, ideally we regen)
                 # For now let's keep icon static or regenerate if we want theme awareness
                 btn.setIcon(QIcon(emoji_to_pixmap(icon, 48)))
-            
+
         # Group Boxes
         self.model_group.setTitle(Config.get("model_sel"))
         self.param_group.setTitle(Config.get("params"))
         self.result_group.setTitle(Config.get("results"))
         self.perf_group.setTitle(Config.get("perf_mon"))
         self.device_group.setTitle(Config.get("device"))
-        
+
         # Labels & Buttons
         self.refresh_btn.setText(Config.get("refresh_models"))
-        self.update_params() # Update slider labels with localized text and values
-        
+        self.update_params()  # Update slider labels with localized text and values
+
         self.lbl_cam_idx.setText(Config.get("cam_idx"))
         if self.thread and self.thread.isRunning():
             self.btn_start.setText(Config.get("stop_cam"))
@@ -2130,10 +2184,10 @@ class MainWindow(QMainWindow):
         else:
             self.btn_start.setText(Config.get("start_cam"))
             self.status_label.setText(Config.get("status_idle"))
-            
+
         self.chk_auto_save_video.setText(Config.get("auto_save"))
         self.chk_auto_save_img.setText(Config.get("auto_save"))
-        
+
         self.image_label.setText(Config.get("drop_hint"))
         self.video_file_label.setText(Config.get("drop_hint"))
         self.btn_open_img.setText(Config.get("open_img"))
@@ -2144,7 +2198,7 @@ class MainWindow(QMainWindow):
         self.btn_open_video.setText(Config.get("open_video"))
         _vid_running = self.video_file_worker is not None and self.video_file_worker.isRunning()
         self.btn_process_video.setText(Config.get("stop_process") if _vid_running else Config.get("process_video"))
-        
+
         self.lbl_data.setText(Config.get("data_path"))
         self.lbl_epochs.setText(Config.get("epochs"))
         self.lbl_batch.setText(Config.get("batch"))
@@ -2167,16 +2221,16 @@ class MainWindow(QMainWindow):
             self.chk_rot_range.setText(Config.get("aug_rot_range"))
             self._update_aug_estimate()
         self.btn_train.setText(Config.get("start_train") if not self._training else Config.get("stop_train"))
-        
+
         # Val
         self.lbl_val_model.setText(Config.get("model_path"))
         self.lbl_val_data.setText(Config.get("data_path"))
         self.btn_val.setText(Config.get("start_val"))
-        
+
         # Export
         self.lbl_export_model.setText(Config.get("model_path"))
         self.btn_export.setText(Config.get("export_model"))
-        
+
         # Benchmark
         self.lbl_bench_model.setText(Config.get("model_path"))
         self.lbl_bench_data.setText(Config.get("data_path"))
@@ -2198,12 +2252,12 @@ class MainWindow(QMainWindow):
 
     def update_performance(self):
         pass
-        
+
     def start_perf_monitoring(self):
         self.lbl_cpu.setText("CPU: -")
         self.lbl_ram.setText("RAM: -")
         self.lbl_gpu.setText("GPU: -")
-        
+
     def _update_perf_stats(self):
         pass
 
@@ -2223,25 +2277,32 @@ class MainWindow(QMainWindow):
             else:
                 # Parse index from "0: Camera Name"
                 try:
-                    source = int(source_text.split(':')[0])
+                    source = int(source_text.split(":")[0])
                 except ValueError:
-                    source = 0 # Fallback
-                
+                    source = 0  # Fallback
+
             tracker = self.tracker_combo.currentText()
-            if tracker == "None": tracker = None
-            
-            self.thread = VideoThread(self.current_model, source=source, device=self.current_device, tracker=tracker, det_model_path=self._active_det_model())
+            if tracker == "None":
+                tracker = None
+
+            self.thread = VideoThread(
+                self.current_model,
+                source=source,
+                device=self.current_device,
+                tracker=tracker,
+                det_model_path=self._active_det_model(),
+            )
             self.thread.change_pixmap_signal.connect(self.update_video_image)
             self.thread.stats_signal.connect(self.update_stats)
-            self.thread.error_signal.connect(self.handle_worker_error) # Connect error signal
+            self.thread.error_signal.connect(self.handle_worker_error)  # Connect error signal
             self.thread.set_save(self.chk_auto_save_video.isChecked())
-            self.thread.set_rotation(int(self.rot_combo.currentText())) # Apply initial rotation
+            self.thread.set_rotation(int(self.rot_combo.currentText()))  # Apply initial rotation
             self.thread.start()
             self.btn_start.setText(Config.get("stop_cam"))
             self.status_label.setText(Config.get("status_run"))
             self.log(f"Source {source} started.")
             self.update_params()
-    
+
     def handle_worker_error(self, err_msg):
         self.log(f"ERROR: {err_msg}")
         self.status_label.setText("Error")
@@ -2264,35 +2325,35 @@ class MainWindow(QMainWindow):
         self.result_list.clear()
         self.result_list.addItem(f"Total Objects: {stats['objects']}")
         self.result_list.addItem(f"Inference: {stats['inference_ms']:.1f}ms")
-        
+
         # Add detailed object counts
-        if 'details' in stats:
-            for name, count in stats['details'].items():
+        if "details" in stats:
+            for name, count in stats["details"].items():
                 self.result_list.addItem(f"{name}: {count}")
 
         # Add depth distance stats
-        if stats.get('depth'):
-            d = stats['depth']
+        if stats.get("depth"):
+            d = stats["depth"]
             self.result_list.addItem(f"Center: {d['center']:.2f}m | Mean: {d['mean']:.2f}m")
             self.result_list.addItem(f"Range: {d['min']:.2f}m - {d['max']:.2f}m")
 
     @pyqtSlot(QImage, dict)
     def update_image_result(self, qt_img, stats):
         self.image_label.setPixmap(QPixmap.fromImage(qt_img))
-        
+
         # Display stats
         self.result_list.clear()
         self.fps_label.setText(f"Inference: {stats['inference_ms']:.1f}ms")
-        
+
         self.result_list.addItem(f"Total Objects: {stats['objects']}")
-        confs = stats.get('conf') or {}
-        for name, count in stats['details'].items():
+        confs = stats.get("conf") or {}
+        for name, count in stats["details"].items():
             if name in confs:
                 self.result_list.addItem(f"{name} x{count} (conf: {confs[name]:.2f})")
             else:
                 self.result_list.addItem(f"{name}: {count}")
-        if stats.get('depth'):
-            d = stats['depth']
+        if stats.get("depth"):
+            d = stats["depth"]
             self.result_list.addItem(f"Center: {d['center']:.2f}m | Mean: {d['mean']:.2f}m")
             self.result_list.addItem(f"Range: {d['min']:.2f}m - {d['max']:.2f}m")
 
@@ -2302,7 +2363,9 @@ class MainWindow(QMainWindow):
 
     # Image Logic
     def open_image(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, Config.get("open_img"), "", "Image Files (*.png *.jpg *.jpeg *.bmp)")
+        file_name, _ = QFileDialog.getOpenFileName(
+            self, Config.get("open_img"), "", "Image Files (*.png *.jpg *.jpeg *.bmp)"
+        )
         if file_name:
             self.image_list = [file_name]
             self.current_image_index = 0
@@ -2314,13 +2377,13 @@ class MainWindow(QMainWindow):
         folder_path = QFileDialog.getExistingDirectory(self, Config.get("open_folder"))
         if folder_path:
             # Get all image files
-            exts = ['*.png', '*.jpg', '*.jpeg', '*.bmp']
+            exts = ["*.png", "*.jpg", "*.jpeg", "*.bmp"]
             self.image_list = []
             for ext in exts:
                 self.image_list.extend(glob.glob(os.path.join(folder_path, ext)))
-            
+
             self.image_list.sort()
-            
+
             if self.image_list:
                 self.current_image_index = 0
                 self.log(f"Loaded {len(self.image_list)} images from {folder_path}")
@@ -2331,85 +2394,102 @@ class MainWindow(QMainWindow):
                 self.log("No images found in folder.")
 
     def prev_image(self):
-        if not self.image_list: return
-        
+        if not self.image_list:
+            return
+
         self.current_image_index -= 1
         if self.current_image_index < 0:
-            self.current_image_index = len(self.image_list) - 1 # Loop to end
-            
+            self.current_image_index = len(self.image_list) - 1  # Loop to end
+
         file_name = self.image_list[self.current_image_index]
-        self.log(f"Processing prev image ({self.current_image_index + 1}/{len(self.image_list)}): {os.path.basename(file_name)}")
+        self.log(
+            f"Processing prev image ({self.current_image_index + 1}/{len(self.image_list)}): {os.path.basename(file_name)}"
+        )
         self.process_dropped_file(file_name)
 
     def next_image(self):
-        if not self.image_list: return
-        
+        if not self.image_list:
+            return
+
         self.current_image_index += 1
         if self.current_image_index >= len(self.image_list):
-            self.current_image_index = 0 # Loop back to start
-            
+            self.current_image_index = 0  # Loop back to start
+
         file_name = self.image_list[self.current_image_index]
-        self.log(f"Processing next image ({self.current_image_index + 1}/{len(self.image_list)}): {os.path.basename(file_name)}")
+        self.log(
+            f"Processing next image ({self.current_image_index + 1}/{len(self.image_list)}): {os.path.basename(file_name)}"
+        )
         self.process_dropped_file(file_name)
 
     def open_file(self):
         # Generic open handler for shortcut
         idx = self.tabs.currentIndex()
-        if idx == 1: # Image
+        if idx == 1:  # Image
             self.open_image()
-        elif idx == 2: # Video
+        elif idx == 2:  # Video
             self.open_video()
 
     def process_dropped_file(self, file_name):
         ext = os.path.splitext(file_name)[1].lower()
-        if ext in ['.mp4', '.avi', '.mov', '.mkv']:
-             self.tabs.setCurrentIndex(2) # Switch to Video Tab
-             self.nav_buttons[2].setChecked(True)
-             self.start_video_process(file_name)
+        if ext in [".mp4", ".avi", ".mov", ".mkv"]:
+            self.tabs.setCurrentIndex(2)  # Switch to Video Tab
+            self.nav_buttons[2].setChecked(True)
+            self.start_video_process(file_name)
         else:
-            self.tabs.setCurrentIndex(1) # Switch to Image Tab
+            self.tabs.setCurrentIndex(1)  # Switch to Image Tab
             self.nav_buttons[1].setChecked(True)
             self.log(f"Processing image: {file_name}")
-            self.image_worker = ImageWorker(self.current_model, file_name, self.chk_auto_save_img.isChecked(), device=self.current_device, det_model_path=self._active_det_model())
+            self.image_worker = ImageWorker(
+                self.current_model,
+                file_name,
+                self.chk_auto_save_img.isChecked(),
+                device=self.current_device,
+                det_model_path=self._active_det_model(),
+            )
             self.image_worker.result_signal.connect(self.update_static_image)
-            self.image_worker.error_signal.connect(self.handle_worker_error) # Connect error signal
+            self.image_worker.error_signal.connect(self.handle_worker_error)  # Connect error signal
             self.image_worker.conf = self.conf_slider.value() / 100.0
             self.image_worker.iou = self.iou_slider.value() / 100.0
             self.image_worker.start()
 
     @pyqtSlot(QImage, dict)
     def update_static_image(self, qt_img, stats):
-        self.image_label.setPixmap(QPixmap.fromImage(qt_img).scaled(
-            self.image_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        self.image_label.setPixmap(
+            QPixmap.fromImage(qt_img).scaled(
+                self.image_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            )
+        )
         self.result_list.clear()
         self.result_list.addItem(f"Total Objects: {stats['objects']}")
         self.result_list.addItem(f"Inference: {stats['inference_ms']:.1f}ms")
-        
+
         # Add detailed object counts (含每类置信度)
-        confs = stats.get('conf') or {}
-        for name, count in stats['details'].items():
+        confs = stats.get("conf") or {}
+        for name, count in stats["details"].items():
             if name in confs:
                 self.result_list.addItem(f"{name} x{count} (conf: {confs[name]:.2f})")
             else:
                 self.result_list.addItem(f"{name}: {count}")
-        
+
         # Add depth distance stats
-        if stats.get('depth'):
-            d = stats['depth']
+        if stats.get("depth"):
+            d = stats["depth"]
             self.result_list.addItem(f"Center: {d['center']:.2f}m | Mean: {d['mean']:.2f}m")
             self.result_list.addItem(f"Range: {d['min']:.2f}m - {d['max']:.2f}m")
-        
+
         self.log("Image processing complete.")
 
     def save_result(self):
         if self.tabs.currentIndex() == 1 and self.image_worker:
             self.image_worker.save_result()
         elif self.tabs.currentIndex() == 0 and self.thread:
-             self.log("Video recording is handled by Auto Save checkbox.")
+            self.log("Video recording is handled by Auto Save checkbox.")
 
     # Video File Logic
     def open_video(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, Config.get("open_video"), "", "Video Files (*.mp4 *.avi *.mov *.mkv)")
+        file_name, _ = QFileDialog.getOpenFileName(
+            self, Config.get("open_video"), "", "Video Files (*.mp4 *.avi *.mov *.mkv)"
+        )
         if file_name:
             self.current_video_path = file_name
             self.btn_process_video.setEnabled(True)
@@ -2422,8 +2502,13 @@ class MainWindow(QMainWindow):
                 h, w, ch = frame.shape
                 bytes_per_line = ch * w
                 qt_image = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
-                self.video_file_label.setPixmap(QPixmap.fromImage(qt_image).scaled(
-                    self.video_file_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                self.video_file_label.setPixmap(
+                    QPixmap.fromImage(qt_image).scaled(
+                        self.video_file_label.size(),
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                )
             cap.release()
 
     def toggle_video_process(self):
@@ -2433,20 +2518,28 @@ class MainWindow(QMainWindow):
             self.stop_video_process()
 
     def start_video_process(self):
-        if not hasattr(self, 'current_video_path') or not self.current_video_path:
+        if not hasattr(self, "current_video_path") or not self.current_video_path:
             return
 
         self.log(f"Processing video: {self.current_video_path}")
         tracker = self.video_tracker_combo.currentText()
-        if tracker == "None": tracker = None
-        
-        self.video_file_worker = VideoFileWorker(self.current_model, self.current_video_path, device=self.current_device, save_video=self.chk_save_video_file.isChecked(), tracker=tracker, det_model_path=self._active_det_model())
+        if tracker == "None":
+            tracker = None
+
+        self.video_file_worker = VideoFileWorker(
+            self.current_model,
+            self.current_video_path,
+            device=self.current_device,
+            save_video=self.chk_save_video_file.isChecked(),
+            tracker=tracker,
+            det_model_path=self._active_det_model(),
+        )
         self.video_file_worker.progress_signal.connect(self.video_progress.setValue)
         self.video_file_worker.frame_signal.connect(self.update_video_file_image)
         self.video_file_worker.stats_signal.connect(self.update_stats)
         self.video_file_worker.error_signal.connect(self.handle_worker_error)
         self.video_file_worker.finished_signal.connect(self.video_finished)
-        
+
         self.btn_open_video.setEnabled(False)
         self.btn_process_video.setText(Config.get("stop_process"))
         self.video_file_worker.start()
@@ -2454,15 +2547,20 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot(QImage)
     def update_video_file_image(self, qt_img):
-        self.video_file_label.setPixmap(QPixmap.fromImage(qt_img).scaled(
-            self.video_file_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        self.video_file_label.setPixmap(
+            QPixmap.fromImage(qt_img).scaled(
+                self.video_file_label.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
 
     def stop_video_process(self):
         if self.video_file_worker:
             self.video_file_worker.stop()
             self.log("Stopping video process...")
         self.status_label.setText(Config.get("status_idle"))
-    
+
     def toggle_video_file_save(self, state):
         if self.video_file_worker:
             self.video_file_worker.set_save(state == Qt.CheckState.Checked.value)
@@ -2489,14 +2587,14 @@ class MainWindow(QMainWindow):
             self.train_data_edit.setText(file_name)
 
     def toggle_training(self):
-        """开始/停止训练 合并按钮。"""
+        """开始/停止训练 合并按钮。."""
         if not self._training:
             self.start_training()
         else:
             self.stop_training()
 
     def start_training(self):
-        """入口: 若启用了图像增强, 先跑增强, 完成后再用新数据集启动训练。"""
+        """入口: 若启用了图像增强, 先跑增强, 完成后再用新数据集启动训练。."""
         data = self.train_data_edit.text()
 
         # Reset stats
@@ -2508,7 +2606,7 @@ class MainWindow(QMainWindow):
         if getattr(self, "aug_group", None) and self.aug_group.isChecked():
             self.log("[增强] 开始离线图像增强 ...")
             self.btn_train.setEnabled(False)
-            self.train_progress.setRange(0, 0)          # 0,0 = 忙碌指示(来回滚动)
+            self.train_progress.setRange(0, 0)  # 0,0 = 忙碌指示(来回滚动)
             self.aug_worker = AugmentWorker(data, self._collect_aug_cfg())
             self.aug_worker.log_signal.connect(self.log)
             self.aug_worker.progress_signal.connect(self.update_aug_progress)
@@ -2518,7 +2616,7 @@ class MainWindow(QMainWindow):
             self._launch_training(data)
 
     def _collect_aug_cfg(self):
-        """从增强面板收集配置, 传给 AugmentWorker。"""
+        """从增强面板收集配置, 传给 AugmentWorker。."""
         return {
             "percent": self.spin_aug_percent.value(),
             "rot_step": self.combo_rot_step.currentData() or 0,
@@ -2542,7 +2640,7 @@ class MainWindow(QMainWindow):
             self.train_progress.setFormat("增强中 %v/%m")
 
     def on_aug_finished(self, new_yaml, stats):
-        """增强结束: 成功则用增强后数据集训练, 失败则取消并恢复界面。"""
+        """增强结束: 成功则用增强后数据集训练, 失败则取消并恢复界面。."""
         self.btn_train.setEnabled(True)
         self.train_progress.setFormat("Epoch %v/%m")
         if not new_yaml:
@@ -2554,7 +2652,7 @@ class MainWindow(QMainWindow):
         self._launch_training(new_yaml)
 
     def _launch_training(self, data_yaml):
-        """真正启动训练 (data_yaml 可能是原配置, 也可能是增强后的新配置)。"""
+        """真正启动训练 (data_yaml 可能是原配置, 也可能是增强后的新配置)。."""
         model_path = self.train_model_edit.text()
         epochs = self.spin_epochs.value()
         batch = self.spin_batch.value()
@@ -2591,7 +2689,7 @@ class MainWindow(QMainWindow):
             self.train_timer.timeout.connect(self._tick_train_timer)
         self.train_worker.start()
         self.train_timer.start()
-        self._tick_train_timer()          # 立即刷一次, 免得第一秒是空白
+        self._tick_train_timer()  # 立即刷一次, 免得第一秒是空白
 
     def stop_training(self):
         if self.train_worker:
@@ -2601,7 +2699,7 @@ class MainWindow(QMainWindow):
             self.btn_train.setText(Config.get("stop_train"))
 
     def _tick_train_timer(self):
-        """每秒刷新 Duration / Speed / ETA / Est.Finish。
+        """每秒刷新 Duration / Speed / ETA / Est.Finish。.
 
         原先这些值只在 on_train_epoch_end 回调里更新, 导致一个 epoch 期间
         (可能数分钟) 时间完全静止不动。这里改为按真实时钟 + 已完成 epoch 的
@@ -2640,7 +2738,7 @@ class MainWindow(QMainWindow):
             nb = getattr(w, "nb", 0) or 0
             bi = getattr(w, "batch_i", 0) or 0
             if nb > 0 and bi > 0:
-                done_f = done + bi / nb          # 以 epoch 为单位的浮点进度
+                done_f = done + bi / nb  # 以 epoch 为单位的浮点进度
                 if done_f > 0:
                     eta = max(0.0, elapsed / done_f * total - elapsed)
 
@@ -2649,8 +2747,7 @@ class MainWindow(QMainWindow):
             self.lbl_train_end.setText("Est. Finish: Calculating...")
         else:
             self.lbl_train_eta.setText(f"ETA: {_fmt_hms(eta)}")
-            self.lbl_train_end.setText(
-                "Est. Finish: " + (now + datetime.timedelta(seconds=eta)).strftime("%H:%M:%S"))
+            self.lbl_train_end.setText("Est. Finish: " + (now + datetime.timedelta(seconds=eta)).strftime("%H:%M:%S"))
 
     def training_finished(self):
         self.btn_train.setProperty("class", "ActionButton")
@@ -2674,13 +2771,13 @@ class MainWindow(QMainWindow):
     def update_train_progress(self, stats):
         # stats is now a dict
         if isinstance(stats, dict):
-            epoch = stats.get('epoch', 0)
-            map50 = stats.get('map50', 0)
-            elapsed = stats.get('elapsed', "")
-            eta = stats.get('eta', "")
-            speed = stats.get('speed', "")
-            eta_ts = stats.get('eta_timestamp', "")
-            
+            epoch = stats.get("epoch", 0)
+            map50 = stats.get("map50", 0)
+            stats.get("elapsed", "")
+            stats.get("eta", "")
+            stats.get("speed", "")
+            stats.get("eta_timestamp", "")
+
             self.train_progress.setValue(epoch)
             self.train_progress.setFormat(f"Epoch {epoch}/{stats.get('total_epochs', '?')} - mAP50: {map50:.4f}")
             # 时间类显示统一交给 _tick_train_timer 按真实时钟每秒刷新
@@ -2707,10 +2804,10 @@ class MainWindow(QMainWindow):
         batch = self.spin_val_batch.value()
         imgsz = self.spin_val_imgsz.value()
         device = self.current_device
-        
+
         self.log(f"Starting validation on {model_path}...")
         self.btn_val.setEnabled(False)
-        
+
         self.val_worker = ValWorker(model_path, data, batch, imgsz, device)
         self.val_worker.log_signal.connect(self.log)
         self.val_worker.results_signal.connect(self.on_val_results)
@@ -2718,7 +2815,7 @@ class MainWindow(QMainWindow):
         self.val_worker.start()
 
     def on_val_results(self, results):
-        """接收 ValWorker 的结构化验证结果，填充界面并启用导出。"""
+        """接收 ValWorker 的结构化验证结果，填充界面并启用导出。."""
         self.last_val_results = results
         try:
             scalar = results.get("scalar", {})
@@ -2793,7 +2890,7 @@ class MainWindow(QMainWindow):
         return "\n".join(lines)
 
     def export_val_report(self):
-        """将验证结果导出为 Markdown 报告或 JSON 数据。"""
+        """将验证结果导出为 Markdown 报告或 JSON 数据。."""
         if not self.last_val_results:
             self.log("暂无验证结果可供导出，请先执行验证。")
             return
@@ -2801,7 +2898,9 @@ class MainWindow(QMainWindow):
         save_dir = meta.get("save_dir") or os.getcwd()
         default_path = os.path.join(save_dir, "val_report")
         file_name, _ = QFileDialog.getSaveFileName(
-            self, "导出验证报告", default_path,
+            self,
+            "导出验证报告",
+            default_path,
             "Markdown 报告 (*.md);;JSON 数据 (*.json)",
         )
         if not file_name:
@@ -2822,7 +2921,7 @@ class MainWindow(QMainWindow):
         file_name, _ = QFileDialog.getOpenFileName(self, "Select Model", "", "Model Files (*.pt)")
         if file_name:
             self.bench_model_edit.setText(file_name)
-            
+
     def browse_bench_data(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Select Data YAML", "", "YAML Files (*.yaml)")
         if file_name:
@@ -2847,9 +2946,9 @@ class MainWindow(QMainWindow):
         row = self.bench_results_table.rowCount()
         self.bench_results_table.insertRow(row)
         vals = [
-            res.get('format', ''),
-            res.get('device', ''),
-            str(res.get('imgsz', '')),
+            res.get("format", ""),
+            res.get("device", ""),
+            str(res.get("imgsz", "")),
             f"{res.get('params', 0):.2f}",
             f"{res.get('latency_ms', 0):.3f}",
             f"{res.get('fps', 0):.1f}",
@@ -2900,7 +2999,7 @@ class MainWindow(QMainWindow):
             self.export_data_edit.setStyleSheet("color: #999;")
 
     def _sync_export_data_enabled(self):
-        """只有勾选 INT8 时才允许选择校准数据。"""
+        """只有勾选 INT8 时才允许选择校准数据。."""
         enable = self.chk_int8.isChecked() and self.chk_int8.isEnabled()
         self.lbl_export_data.setEnabled(enable)
         self.export_data_edit.setEnabled(enable)
@@ -2908,10 +3007,10 @@ class MainWindow(QMainWindow):
 
     def export_model(self):
         selected_text = self.combo_format.currentText()
-        fmt = self.export_formats.get(selected_text, "onnx") # Default to onnx
-        
+        fmt = self.export_formats.get(selected_text, "onnx")  # Default to onnx
+
         model_path = self.export_model_edit.text()
-        
+
         # Args
         imgsz = self.spin_export_imgsz.value()
         half = self.chk_half.isChecked()
@@ -2930,11 +3029,12 @@ class MainWindow(QMainWindow):
 
         self.log(f"Starting export of {model_path} to {fmt}...")
         self.btn_export.setEnabled(False)
-        
+
         self.export_worker = ExportWorker(model_path, fmt, imgsz, half, int8, dynamic, simplify, device, calib_data)
         self.export_worker.log_signal.connect(self.log)
         self.export_worker.finished_signal.connect(lambda: self.btn_export.setEnabled(True))
         self.export_worker.start()
+
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
@@ -2944,7 +3044,6 @@ if __name__ == "__main__":
     window = MainWindow()
     # 让窗口适配屏幕可用区域，避免窗口高于屏幕时底部日志栏被截断
     _avail = app.primaryScreen().availableGeometry()
-    window.resize(min(window.width(), _avail.width()),
-                  min(window.height(), _avail.height()))
+    window.resize(min(window.width(), _avail.width()), min(window.height(), _avail.height()))
     window.show()
     sys.exit(app.exec())

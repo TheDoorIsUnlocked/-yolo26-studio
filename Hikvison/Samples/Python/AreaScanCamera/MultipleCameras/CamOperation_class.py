@@ -1,30 +1,41 @@
-# -- coding: utf-8 --
-import threading
-import time
-import sys
 import ctypes
 import os
 import platform
+import sys
+import threading
+import time
 from ctypes import *
 
 currentsystem = platform.system()
-if currentsystem == 'Windows':
-    sys.path.append(os.path.join(os.getenv('MVCAM_COMMON_RUNENV'), "Samples", "Python", "MvImport"))
+if currentsystem == "Windows":
+    sys.path.append(os.path.join(os.getenv("MVCAM_COMMON_RUNENV"), "Samples", "Python", "MvImport"))
 else:
     sys.path.append(os.path.join("..", "..", "MvImport"))
-    
+
 from MvCameraControl_class import *
 
-class CameraOperation():
 
-    def __init__(self,obj_cam,st_device_list,n_connect_num=0,b_open_device=False,b_start_grabbing = False,h_thread_handle=None,\
-                b_thread_opened=False,st_frame_info=None,b_save_bmp=False,b_save_jpg=False,buf_save_image=None):
+class CameraOperation:
+    def __init__(
+        self,
+        obj_cam,
+        st_device_list,
+        n_connect_num=0,
+        b_open_device=False,
+        b_start_grabbing=False,
+        h_thread_handle=None,
+        b_thread_opened=False,
+        st_frame_info=None,
+        b_save_bmp=False,
+        b_save_jpg=False,
+        buf_save_image=None,
+    ):
 
         self.obj_cam = obj_cam
         self.st_device_list = st_device_list
         self.n_connect_num = n_connect_num
         self.b_open_device = b_open_device
-        self.b_start_grabbing = b_start_grabbing 
+        self.b_start_grabbing = b_start_grabbing
         self.b_thread_opened = b_thread_opened
         self.st_frame_info = MV_FRAME_OUT_INFO_EX()
         self.b_save_bmp = b_save_bmp
@@ -39,7 +50,7 @@ class CameraOperation():
 
     # 转为16进制字符串
     def to_hex_str(self, num):
-        chaDic = {10: 'a', 11: 'b', 12: 'c', 13: 'd', 14: 'e', 15: 'f'}
+        chaDic = {10: "a", 11: "b", 12: "c", 13: "d", 14: "e", 15: "f"}
         hexStr = ""
         if num < 0:
             num = num + 2**32
@@ -55,7 +66,9 @@ class CameraOperation():
         if self.b_open_device is False:
             # ch:选择设备并创建句柄 | en:Select device and create handle
             nConnectionNum = int(self.n_connect_num)
-            stDeviceList = cast(self.st_device_list.pDeviceInfo[int(nConnectionNum)], POINTER(MV_CC_DEVICE_INFO)).contents
+            stDeviceList = cast(
+                self.st_device_list.pDeviceInfo[int(nConnectionNum)], POINTER(MV_CC_DEVICE_INFO)
+            ).contents
             self.obj_cam = MvCamera()
             ret = self.obj_cam.MV_CC_CreateHandle(stDeviceList)
             if ret != 0:
@@ -74,26 +87,26 @@ class CameraOperation():
             if stDeviceList.nTLayerType == MV_GIGE_DEVICE:
                 nPacketSize = self.obj_cam.MV_CC_GetOptimalPacketSize()
                 if int(nPacketSize) > 0:
-                    ret = self.obj_cam.MV_CC_SetIntValue("GevSCPSPacketSize",nPacketSize)
+                    ret = self.obj_cam.MV_CC_SetIntValue("GevSCPSPacketSize", nPacketSize)
                     if ret != 0:
-                        print("warning: set packet size fail! ret[0x%x]" % ret)
+                        print(f"warning: set packet size fail! ret[0x{ret:x}]")
                 else:
                     print("warning: packet size is invalid[%d]" % nPacketSize)
 
             stBool = c_bool(False)
-            ret =self.obj_cam.MV_CC_GetBoolValue("AcquisitionFrameRateEnable", stBool)
+            ret = self.obj_cam.MV_CC_GetBoolValue("AcquisitionFrameRateEnable", stBool)
             if ret != 0:
-                print("warning: get acquisition frame rate enable fail! ret[0x%x]" % ret)
+                print(f"warning: get acquisition frame rate enable fail! ret[0x{ret:x}]")
 
             # ch:设置触发模式为off | en:Set trigger mode as off
             ret = self.obj_cam.MV_CC_SetEnumValueByString("TriggerMode", "Off")
             if ret != 0:
-                print("warning: set trigger mode off fail! ret[0x%x]" % ret)
+                print(f"warning: set trigger mode off fail! ret[0x{ret:x}]")
             return 0
         return 0
-            
+
     # 开始取图
-    def start_grabbing(self, n_index,  win_handle):
+    def start_grabbing(self, n_index, win_handle):
         if not self.b_start_grabbing and self.b_open_device:
             ret = self.obj_cam.MV_CC_StartGrabbing()
             if ret != 0:
@@ -103,11 +116,13 @@ class CameraOperation():
             print("start grabbing " + str(n_index) + "successfully!")
             try:
                 self.exit_flag = threading.Event()
-                self.h_thread_handle = threading.Thread(target=CameraOperation.work_thread, args=(self, n_index, win_handle, self.exit_flag))
+                self.h_thread_handle = threading.Thread(
+                    target=CameraOperation.work_thread, args=(self, n_index, win_handle, self.exit_flag)
+                )
                 self.h_thread_handle.start()
                 self.b_thread_opened = True
             except TypeError:
-                print('error: unable to start thread')
+                print("error: unable to start thread")
                 self.b_start_grabbing = False
             return 0
         return MV_E_CALLORDER
@@ -130,7 +145,7 @@ class CameraOperation():
     # 关闭相机
     def close_device(self):
         if self.b_open_device:
-            #退出线程
+            # 退出线程
             if self.b_thread_opened:
                 self.exit_flag.set()
                 self.h_thread_handle.join()
@@ -143,7 +158,7 @@ class CameraOperation():
             ret = self.obj_cam.MV_CC_CloseDevice()
             if ret != 0:
                 return ret
-                
+
         # ch:销毁句柄 | Destroy handle
         self.obj_cam.MV_CC_DestroyHandle()
         self.b_open_device = False
@@ -153,12 +168,12 @@ class CameraOperation():
     def set_trigger_mode(self, trigger_mode):
         if True == self.b_open_device:
             if "continuous" == trigger_mode:
-                ret = self.obj_cam.MV_CC_SetEnumValueByString("TriggerMode","Off")
+                ret = self.obj_cam.MV_CC_SetEnumValueByString("TriggerMode", "Off")
                 if ret != 0:
                     return ret
                 return 0
             if "triggermode" == trigger_mode:
-                ret = self.obj_cam.MV_CC_SetEnumValueByString("TriggerMode","On")
+                ret = self.obj_cam.MV_CC_SetEnumValueByString("TriggerMode", "On")
                 if ret != 0:
                     return ret
                 return 0
@@ -189,7 +204,7 @@ class CameraOperation():
             time.sleep(0.2)
             ret = self.obj_cam.MV_CC_SetFloatValue("ExposureTime", float(str_value))
             if ret != 0:
-                print('show error', 'set exposure time fail! ret = ' + self.to_hex_str(ret))
+                print("show error", "set exposure time fail! ret = " + self.to_hex_str(ret))
                 return ret
         return 0
 
@@ -199,7 +214,7 @@ class CameraOperation():
             time.sleep(0.2)
             ret = self.obj_cam.MV_CC_SetFloatValue("Gain", float(str_value))
             if ret != 0:
-                print('show error', 'set gain fail! ret = ' + self.to_hex_str(ret))
+                print("show error", "set gain fail! ret = " + self.to_hex_str(ret))
                 return ret
         return 0
 
@@ -245,7 +260,7 @@ class CameraOperation():
                 # 释放缓存
                 self.obj_cam.MV_CC_FreeImageBuffer(stOutFrame)
             else:
-                print("Camera[" + str(n_index) + "]:no data, ret = "+self.to_hex_str(ret))
+                print("Camera[" + str(n_index) + "]:no data, ret = " + self.to_hex_str(ret))
                 continue
 
     # 存BMP图像
@@ -257,7 +272,7 @@ class CameraOperation():
         self.buf_lock.acquire()
 
         file_path = "cam" + str(self.n_connect_num) + "_" + str(self.st_frame_info.nFrameNum) + ".bmp"
-        c_file_path = file_path.encode('ascii')
+        c_file_path = file_path.encode("ascii")
 
         stSaveParam = MV_SAVE_IMAGE_TO_FILE_PARAM_EX()
         stSaveParam.enPixelType = self.st_frame_info.enPixelType  # ch:相机对应的像素格式 | en:Camera pixel type

@@ -8,13 +8,13 @@
 
 ## 0. 适用平台与版本对应关系
 
-| 项目 | 说明 |
-| --- | --- |
-| 硬件 | NVIDIA Jetson（带 GPU，aarch64 架构） |
-| 系统 | Ubuntu 22.04 LTS（ARM64） |
+| 项目    | 说明                                                     |
+| ------- | -------------------------------------------------------- |
+| 硬件    | NVIDIA Jetson（带 GPU，aarch64 架构）                    |
+| 系统    | Ubuntu 22.04 LTS（ARM64）                                |
 | JetPack | 6.x（JetPack 5.x 是 Ubuntu 20.04，与教程命令不完全兼容） |
-| CUDA | 12.x（JetPack 6 自带） |
-| Python | 3.10（JetPack 6 默认） |
+| CUDA    | 12.x（JetPack 6 自带）                                   |
+| Python  | 3.10（JetPack 6 默认）                                   |
 
 > 注意：Jetson 是 ARM64 架构，**不能直接使用 PyPI 上的官方 PyTorch**（那个是 x86_64 的），必须安装 NVIDIA 为 Jetson 编译的专用 wheel，否则 `torch.cuda.is_available()` 会返回 False。
 
@@ -42,8 +42,8 @@ python3 --version
 sudo apt update && sudo apt upgrade -y
 
 sudo apt install -y python3-pip python3-venv git build-essential cmake \
-    libjpeg-dev libpng-dev libtiff-dev zlib1g-dev \
-    libopenblas-dev libavcodec-dev libavformat-dev libswscale-dev
+  libjpeg-dev libpng-dev libtiff-dev zlib1g-dev \
+  libopenblas-dev libavcodec-dev libavformat-dev libswscale-dev
 ```
 
 ## 3. 安装 Qt6 图形界面依赖（PyQt6 必需）
@@ -52,11 +52,11 @@ sudo apt install -y python3-pip python3-venv git build-essential cmake \
 
 ```bash
 sudo apt install -y \
-    libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 \
-    libxcb-shape0 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 \
-    libx11-xcb1 libegl1 libgl1 libglib2.0-0 libfontconfig1 libdbus-1-3 \
-    libgstreamer1.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-    gstreamer1.0-libav
+  libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 \
+  libxcb-shape0 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 \
+  libx11-xcb1 libegl1 libgl1 libglib2.0-0 libfontconfig1 libdbus-1-3 \
+  libgstreamer1.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+  gstreamer1.0-libav
 ```
 
 ## 4. 创建 Python 虚拟环境
@@ -169,16 +169,16 @@ DISPLAY=:1 ~/venv_yolo/bin/python main.py
 
 ## 10. 常见问题排查
 
-| 现象 | 原因 | 解决办法 |
-| --- | --- | --- |
-| `could not load the Qt platform plugin "xcb"` | 缺少 Qt xcb 依赖 | 安装第 3 节的全部依赖，重点确认 `libxcb-cursor0` |
-| `import torch` 报 `libcudnn.so.9` 缺失 | 缺 cuDNN | `sudo apt install -y libcudnn9-cuda-12 libcudnn9-dev-cuda-12 && sudo ldconfig` |
-| `import torch` 报 `libcusparseLt.so.0` 缺失 | 缺 cuSPARSELt | `pip install nvidia-cusparselt-cu12` 并配置 `LD_LIBRARY_PATH` |
-| `torch.cuda.is_available()` 返回 False | 装成了 CPU 版 torch | `pip uninstall torch torchvision` 后按第 5 节重装 Jetson 专用 wheel |
-| NumPy 2.x 报错 / torch 无法 import | 版本冲突 | `pip install "numpy<2" --force-reinstall` |
-| 界面中文显示成方块 | 缺中文字体 | `sudo apt install -y fonts-wqy-zenhei fonts-wqy-microhei` |
-| 摄像头打不开 | 权限或索引不对 | USB 相机索引调 0/1 尝试；权限问题可加 `sudo`；CSI 相机需系统自带带 GStreamer 的 OpenCV |
-| 推理卡顿 | 模型偏大 | 选用 `yolo11n` 等轻量模型，或在导出/推理时调小 `imgsz` |
+| 现象                                          | 原因                | 解决办法                                                                               |
+| --------------------------------------------- | ------------------- | -------------------------------------------------------------------------------------- |
+| `could not load the Qt platform plugin "xcb"` | 缺少 Qt xcb 依赖    | 安装第 3 节的全部依赖，重点确认 `libxcb-cursor0`                                       |
+| `import torch` 报 `libcudnn.so.9` 缺失        | 缺 cuDNN            | `sudo apt install -y libcudnn9-cuda-12 libcudnn9-dev-cuda-12 && sudo ldconfig`         |
+| `import torch` 报 `libcusparseLt.so.0` 缺失   | 缺 cuSPARSELt       | `pip install nvidia-cusparselt-cu12` 并配置 `LD_LIBRARY_PATH`                          |
+| `torch.cuda.is_available()` 返回 False        | 装成了 CPU 版 torch | `pip uninstall torch torchvision` 后按第 5 节重装 Jetson 专用 wheel                    |
+| NumPy 2.x 报错 / torch 无法 import            | 版本冲突            | `pip install "numpy<2" --force-reinstall`                                              |
+| 界面中文显示成方块                            | 缺中文字体          | `sudo apt install -y fonts-wqy-zenhei fonts-wqy-microhei`                              |
+| 摄像头打不开                                  | 权限或索引不对      | USB 相机索引调 0/1 尝试；权限问题可加 `sudo`；CSI 相机需系统自带带 GStreamer 的 OpenCV |
+| 推理卡顿                                      | 模型偏大            | 选用 `yolo11n` 等轻量模型，或在导出/推理时调小 `imgsz`                                 |
 
 ## 11. 命令行验证
 
@@ -205,8 +205,8 @@ print('detections:', len(r[0].boxes))
 
 ```bash
 cd /home/nvidia/ultralytics-26_2
-~/venv_yolo/bin/python smoke_test.py                        # 默认数据集与模型
-~/venv_yolo/bin/python smoke_test.py 6171.yaml yolo26n.pt   # 指定数据集 / 基础模型
+~/venv_yolo/bin/python smoke_test.py                      # 默认数据集与模型
+~/venv_yolo/bin/python smoke_test.py 6171.yaml yolo26n.pt # 指定数据集 / 基础模型
 ```
 
 打印 `冒烟结果: 通过` 即代表环境、代码、数据三者都配对。
@@ -216,11 +216,11 @@ cd /home/nvidia/ultralytics-26_2
 
 Windows 版教程的第 15 节描述了 RF-DETR 训练 / 验证 / 导出功能。在 Jetson ARM64 上：
 
-| 项 | 状态 |
-| --- | --- |
-| YOLO 全部功能（训练 / 验证 / 导出 / 增强 / 异常检测） | ✅ 完全支持 |
-| RF-DETR 标签页 | ⚠️ **未安装依赖时会整页禁用并提示**，不影响其它功能 |
-| 在 ARM64 上装 `rfdetr` | ❓ 未实测。`rfdetr` 依赖 `roboflow` / `pytorch-lightning` / `transformers`，在 aarch64 上可能需自行编译，且会拉入 `opencv-python-headless` 顶替系统 `cv2`（Jetson 的 cv2 是带 GStreamer 的定制版，被覆盖后 **CSI 相机可能失效**） |
+| 项                                                    | 状态                                                                                                                                                                                                                              |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| YOLO 全部功能（训练 / 验证 / 导出 / 增强 / 异常检测） | ✅ 完全支持                                                                                                                                                                                                                       |
+| RF-DETR 标签页                                        | ⚠️ **未安装依赖时会整页禁用并提示**，不影响其它功能                                                                                                                                                                               |
+| 在 ARM64 上装 `rfdetr`                                | ❓ 未实测。`rfdetr` 依赖 `roboflow` / `pytorch-lightning` / `transformers`，在 aarch64 上可能需自行编译，且会拉入 `opencv-python-headless` 顶替系统 `cv2`（Jetson 的 cv2 是带 GStreamer 的定制版，被覆盖后 **CSI 相机可能失效**） |
 
 **建议**：Jetson 上**不要装 RF-DETR**，保持 YOLO 链路即可。
 如果确实要试，务必先备份当前 `cv2`，并在独立的虚拟环境里安装，不要污染 `venv_yolo`。
