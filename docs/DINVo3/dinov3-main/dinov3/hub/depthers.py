@@ -3,19 +3,23 @@
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
 
+from __future__ import annotations
+
 from enum import Enum
-from typing import Optional, Tuple
 
 import torch
+
 from dinov3.eval.depth.models import DecoderConfig, make_depther_from_config
 
-from .utils import _DINOV3_BASE_URL, _safe_load_state_dict_from_url
 from .backbones import (
     Weights as BackboneWeights,
-    dinov3_vitl16,
-    dinov3_vit7b16,
-    convert_path_or_url_to_url,
 )
+from .backbones import (
+    convert_path_or_url_to_url,
+    dinov3_vit7b16,
+    dinov3_vitl16,
+)
+from .utils import _DINOV3_BASE_URL, _safe_load_state_dict_from_url
 
 
 class DepthWeights(Enum):
@@ -30,14 +34,14 @@ def _get_depth_range(dataset: DepthWeights):
     return depth_ranges[dataset]
 
 
-_DPT_HEAD_CONFIG_DICT = dict(
-    use_backbone_norm=True,
-    use_batchnorm=True,
-    use_cls_token=False,
-    n_output_channels=256,
-    depth_weights=DepthWeights.SYNTHMIX,
-    backbone_weights=BackboneWeights.LVD1689M,
-)
+_DPT_HEAD_CONFIG_DICT = {
+    "use_backbone_norm": True,
+    "use_batchnorm": True,
+    "use_cls_token": False,
+    "n_output_channels": 256,
+    "depth_weights": DepthWeights.SYNTHMIX,
+    "backbone_weights": BackboneWeights.LVD1689M,
+}
 
 
 def _get_out_layers(backbone_name):
@@ -64,7 +68,7 @@ _BACKBONE_DICT = {
 
 def _get_depther_config(
     backbone_name: str = "dinov3_vit7b16",
-    depth_range: Optional[Tuple[float, float]] = None,
+    depth_range: tuple[float, float] | None = None,
     **kwargs,
 ):
     out_index = _get_out_layers(backbone_name)
@@ -82,10 +86,10 @@ def _get_depther_config(
         use_cls_token=bool(_DPT_HEAD_CONFIG_DICT["use_cls_token"]),
         type="dpt",
         # DPTHead args
-        head_kwargs=dict(
-            channels=512,
-            post_process_channels=post_process_channels,
-        ),
+        head_kwargs={
+            "channels": 512,
+            "post_process_channels": post_process_channels,
+        },
         **kwargs,
     )
     return depther_config
@@ -97,7 +101,7 @@ def _make_dinov3_dpt_depther(
     pretrained: bool = True,
     depther_weights: DepthWeights | str = DepthWeights.SYNTHMIX,
     backbone_weights: BackboneWeights | str = BackboneWeights.LVD1689M,
-    depth_range: Optional[Tuple[float, float]] = None,
+    depth_range: tuple[float, float] | None = None,
     check_hash: bool = False,
     autocast_dtype: torch.dtype = torch.float32,
     **kwargs,
@@ -117,7 +121,7 @@ def _make_dinov3_dpt_depther(
         if isinstance(depther_weights, DepthWeights):
             assert depther_weights == DepthWeights.SYNTHMIX, f"Unsupported depther weights {depther_weights}"
             weights_name = depther_weights.value.lower()
-            hash = kwargs["hash"] if "hash" in kwargs else "02040be1"
+            hash = kwargs.get("hash", "02040be1")
             url = _DINOV3_BASE_URL + f"/{backbone_name}/{backbone_name}_{weights_name}_dpt_head-{hash}.pth"
         else:
             url = convert_path_or_url_to_url(depther_weights)
