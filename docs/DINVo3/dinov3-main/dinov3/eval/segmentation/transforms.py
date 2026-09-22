@@ -3,12 +3,14 @@
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
 
-import numpy as np
-from PIL import Image
-from typing import Any, List, Optional, Sequence, Tuple, Union
+from __future__ import annotations
 
+from typing import Any, Sequence
+
+import numpy as np
 import torch
 import torch.nn.functional as F
+from PIL import Image
 from torchvision import transforms as T
 from torchvision.transforms import functional as Fv
 from torchvision.transforms import v2
@@ -19,15 +21,10 @@ from dinov3.eval.segmentation.metrics import preprocess_nonzero_labels
 
 
 class PhotoMetricDistortion(torch.nn.Module):
-    """Apply photometric distortion to image sequentially, every transformation
-    is applied with a probability of 0.5.
-    1. random brightness
-    2. random contrast (mode 0)
-    3. convert color from BGR to HSV
-    4. random saturation
-    5. random hue
-    6. convert color from HSV to BGR
-    7. random contrast (mode 1)
+    """Apply photometric distortion to image sequentially, every transformation is applied with a probability of 0.5. 1.
+    random brightness 2. random contrast (mode 0) 3. convert color from BGR to HSV 4. random saturation 5. random
+    hue 6. convert color from HSV to BGR 7. random contrast (mode 1).
+
     Args:
         brightness_delta (int): delta of brightness.
         contrast_range (tuple): range of contrast.
@@ -80,7 +77,7 @@ class PhotoMetricDistortion(torch.nn.Module):
             img = img_tensor.permute((1, 2, 0)).numpy()
         return img
 
-    def forward(self, img, label) -> Tuple[torch.Tensor, Any]:
+    def forward(self, img, label) -> tuple[torch.Tensor, Any]:
         """Transform function to perform photometric distortion on images."""
         # Operations need numpy arrays
         img = img.permute((1, 2, 0)).numpy()
@@ -114,13 +111,13 @@ class ReduceZeroLabel(torch.nn.Module):
 
 
 class MaybeApplyImageLabel(torch.nn.Module):
-    """Apply a given operation on both image and label
-    given a probability threshold.
+    """Apply a given operation on both image and label given a probability threshold.
+
     Args:
-        _transform (torchvision.transforms): type of transform to apply.
-            Since this transform is applied on both image and label,
-            it has to be deterministic (e.g. horizontal flip, non-random crop).
-        _threshold (float): probability of applying the above transform."""
+        _transform (torchvision.transforms): type of transform to apply. Since this transform is applied on both image
+            and label, it has to be deterministic (e.g. horizontal flip, non-random crop).
+        _threshold (float): probability of applying the above transform.
+    """
 
     def __init__(self, transform, threshold: float = 0.5):
         super().__init__()
@@ -136,19 +133,20 @@ class MaybeApplyImageLabel(torch.nn.Module):
 
 class FixedSideResize:
     """Resize an image, given a fixed value for the small side.
+
     Args:
         small_size (int): small size to resize an image to.
-            example: if small_size = 512, an image of size (300, 400) will be resized to (512, 683)
+        example: if small_size = 512, an image of size (300, 400) will be resized to (512, 683)
         image_interpolation (T.InterpolationMode): Interpolation mode when resizing a given image.
         label_interpolation (T.InterpolationMode): Interpolation mode when resizing a given label.
-        random_img_size_ratio_range (tuple(min, max)): If used, for a given image, a random ratio
-            between the range is used to multiply to `small_size` for resizing
-        inference_mode (str): Dataset inference mode.
-            If value is "whole", resize both image and label for a single prediction on the resized image.
-            If value is "slide", resize image, do sliding inference on it, then scale it back to the
-            original image size for final prediction - the label doesn't need to be resized.
+        random_img_size_ratio_range (tuple(min, max)): If used, for a given image, a random ratio between the range is
+            used to multiply to `small_size` for resizing
+        inference_mode (str): Dataset inference mode. If value is "whole", resize both image and label for a single
+            prediction on the resized image. If value is "slide", resize image, do sliding inference on it, then scale
+            it back to the original image size for final prediction - the label doesn't need to be resized.
+
     Returns:
-        image, label (PIL.Image, tensor.Tensor): resized image and label
+        image, label (PIL.Image, tensor.Tensor): resized image and label.
     """
 
     def __init__(
@@ -159,8 +157,10 @@ class FixedSideResize:
         random_img_size_ratio_range=None,
         inference_mode="whole",
         use_tta=False,
-        tta_img_size_ratio_range=[1.0],
+        tta_img_size_ratio_range=None,
     ):
+        if tta_img_size_ratio_range is None:
+            tta_img_size_ratio_range = [1.0]
         self.small_size = small_size
         self.image_interpolation = image_interpolation
         self.label_interpolation = label_interpolation
@@ -206,9 +206,7 @@ class FixedSideResize:
 
 
 class ResizeV2:
-    """
-    Resize both image and label using different interpolation modes.
-    """
+    """Resize both image and label using different interpolation modes."""
 
     def __init__(self, size, image_interpolation, label_interpolation):
         self.size = size
@@ -230,8 +228,10 @@ class CustomResize(torch.nn.Module):
         random_img_size_ratio_range=None,
         inference_mode="whole",
         use_tta=False,
-        tta_img_size_ratio_range=[1.0],
+        tta_img_size_ratio_range=None,
     ):
+        if tta_img_size_ratio_range is None:
+            tta_img_size_ratio_range = [1.0]
         super().__init__()
         if isinstance(img_resize, int):
             self.resize_function = FixedSideResize(
@@ -256,14 +256,15 @@ class CustomResize(torch.nn.Module):
 
 class RandomCropWithLabel(torch.nn.Module):
     """Randomly crop the image & segmentation label.
+
     Args:
         crop_size (tuple(h, w)): Expected size after cropping.
-        cat_max_ratio (float): The maximum ratio that a single category could
-            occupy in the cropped image. Default value is 0.75.
-        ignore_index (int): Index to ignore when measuring the category ratio
-            in a cropped image
+        cat_max_ratio (float): The maximum ratio that a single category could occupy in the cropped image. Default value
+            is 0.75.
+        ignore_index (int): Index to ignore when measuring the category ratio in a cropped image
+
     Returns:
-        cropped_img (torch.Tensor), Optional[crop_bbox](tuple)
+        cropped_img (torch.Tensor), Optional[crop_bbox](tuple).
     """
 
     def __init__(self, crop_size, cat_max_ratio=0.75, ignore_index=255):
@@ -285,13 +286,13 @@ class RandomCropWithLabel(torch.nn.Module):
         return crop_y1, crop_y2, crop_x1, crop_x2
 
     def crop(self, img, crop_bbox):
-        """Crop given a crop bounding box"""
+        """Crop given a crop bounding box."""
         crop_y1, crop_y2, crop_x1, crop_x2 = crop_bbox
         img = img[:, crop_y1:crop_y2, crop_x1:crop_x2]
         return img
 
     def forward(self, img, label):
-        """Find an adequate crop for a given image and crop it"""
+        """Find an adequate crop for a given image and crop it."""
         # Create a random crop_bbox
         new_crop_bbox = self.get_crop_bbox(img)
         if self.cat_max_ratio < 1.0:
@@ -334,9 +335,11 @@ class HorizontalFlipAug(torch.nn.Module):
 
 
 class PadTensor(torch.nn.Module):
-    """Pad a given tensor to the desired shape"""
+    """Pad a given tensor to the desired shape."""
 
-    def __init__(self, pad_shape=[512, 512], img_pad_value=0, label_pad_value=255):
+    def __init__(self, pad_shape=None, img_pad_value=0, label_pad_value=255):
+        if pad_shape is None:
+            pad_shape = [512, 512]
         super().__init__()
         self.pad_shape = pad_shape
         self.img_pad_value = img_pad_value
@@ -360,8 +363,9 @@ class NormalizeImage(torch.nn.Module):
 
 
 class TransformImages(torch.nn.Module):
-    """Given a list of operations, apply them on a tensor or a list of transforms.
-    Transforms apply on images. Always return a list of tensors for coherent output format.
+    """Given a list of operations, apply them on a tensor or a list of transforms. Transforms apply on images. Always
+    return a list of tensors for coherent output format.
+
     Args:
         _transform (List[torchvision.transforms]): transforms to apply.
     """
@@ -380,7 +384,7 @@ class TransformImages(torch.nn.Module):
 
 
 class MaskToTensor(torch.nn.Module):
-    """Read segmentation mask from arrays or PIL images"""
+    """Read segmentation mask from arrays or PIL images."""
 
     def forward(self, img, label):
         if isinstance(label, np.ndarray):
@@ -390,11 +394,11 @@ class MaskToTensor(torch.nn.Module):
 
 def make_segmentation_train_transforms(
     *,
-    img_size: Optional[Union[List[int], int]] = None,
+    img_size: list[int] | int | None = None,
     image_interpolation: T.InterpolationMode = T.InterpolationMode.BILINEAR,
     label_interpolation: T.InterpolationMode = T.InterpolationMode.NEAREST,
-    random_img_size_ratio_range: Optional[List[float]] = None,
-    crop_size: Optional[Tuple[int]] = None,
+    random_img_size_ratio_range: list[float] | None = None,
+    crop_size: tuple[int] | None = None,
     flip_prob: float = 0.0,
     reduce_zero_label: bool = False,
     mean: Sequence[float] = [mean * 255 for mean in IMAGENET_DEFAULT_MEAN],
@@ -442,7 +446,7 @@ def make_segmentation_train_transforms(
 
 def make_segmentation_eval_transforms(
     *,
-    img_size: Optional[Union[List[int], int]] = None,
+    img_size: list[int] | int | None = None,
     inference_mode: str = "whole",
     image_interpolation: T.InterpolationMode = T.InterpolationMode.BILINEAR,
     label_interpolation: T.InterpolationMode = T.InterpolationMode.NEAREST,
