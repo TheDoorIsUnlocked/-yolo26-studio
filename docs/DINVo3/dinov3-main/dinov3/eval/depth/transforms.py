@@ -3,18 +3,18 @@
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
 
+from __future__ import annotations
+
 from enum import Enum
 from typing import Callable
 
 import numpy as np
 import torch
 import torchvision.transforms as T
-from torchvision.transforms import v2
-from torchvision import tv_tensors
-
-
 import torchvision.transforms.functional as TF
 from PIL import Image
+from torchvision import tv_tensors
+from torchvision.transforms import v2
 
 from dinov3.data.transforms import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
@@ -33,7 +33,7 @@ class Aug:
 
 
 class ColorAug(torch.nn.Module):
-    """Color augmentation used in depth estimation
+    """Color augmentation used in depth estimation.
 
     Args:
         prob (float, optional): The color augmentation probability. Default: None.
@@ -60,7 +60,7 @@ class ColorAug(torch.nn.Module):
         Returns:
             img: Randomly colored data.
         """
-        aug = True if np.random.rand() < self.prob else False
+        aug = np.random.rand() < self.prob
         if aug:
             image = img.permute((1, 2, 0)) * 255  # 256, 256, 3
 
@@ -85,7 +85,7 @@ class ColorAug(torch.nn.Module):
 
 
 class ColorAugV2(torch.nn.Module):
-    """Color augmentation used in depth estimation
+    """Color augmentation used in depth estimation.
 
     Args:
         prob (float, optional): The color augmentation probability. Default: None.
@@ -115,9 +115,8 @@ class ColorAugV2(torch.nn.Module):
 
 
 class LeftRightFlipAug(Aug):
-    """
-    Test time augmentation for depth estimation
-    from https://github.com/open-mmlab/mmcv/blob/main/mmcv/transforms/processing.py#L721
+    """Test time augmentation for depth estimation from
+    https://github.com/open-mmlab/mmcv/blob/main/mmcv/transforms/processing.py#L721.
 
     this is just returning two versions of the same image, and the according labels
     """
@@ -137,7 +136,6 @@ class LeftRightFlipAug(Aug):
         Returns:
             list: A list of augmented data.
         """
-
         do_flips = [False, True] if self._flip else [False]
         results_images = []
         results_labels = []
@@ -206,9 +204,7 @@ class NYUCrop:
 
 
 class ResizeV2:
-    """
-    Resize both image and label using different interpolation modes.
-    """
+    """Resize both image and label using different interpolation modes."""
 
     def __init__(
         self,
@@ -275,7 +271,7 @@ class Depth(tv_tensors.Mask):
 
 
 class ToRGBDTensorPair(torch.nn.Module):
-    """Read segmentation mask from arrays or PIL images"""
+    """Read segmentation mask from arrays or PIL images."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
