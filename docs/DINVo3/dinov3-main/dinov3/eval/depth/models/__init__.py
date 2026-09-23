@@ -2,17 +2,20 @@
 #
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Any
 
 import torch
+
 from dinov3.eval.depth.checkpoint_utils import load_checkpoint
 from dinov3.eval.depth.utils import create_chmv2_mixlog_bins, create_outputs_with_chmv2_mixlog_norm
 
 from .dpt_head import DPTHead
-from .linear_head import LinearHead
 from .encoder import BackboneLayersSet, DinoVisionTransformerWrapper, PatchSizeAdaptationStrategy
+from .linear_head import LinearHead
 
 
 @dataclass
@@ -42,18 +45,18 @@ class FeaturesToDepth(torch.nn.Module):
         bins_strategy="linear",
         norm_strategy="linear",
     ):
-        """
-        Module which converts a feature maps into a depth map
+        """Module which converts a feature maps into a depth map.
 
         Args:
-        min_depth (float): minimum depth, used to calibrate the depth range
-        max_depth (float): maximum depth, used to calibrate the depth range
-        bins_strategy (str): Choices are 'linear', 'log', or 'chmv2_mixlog'. The first two are for Uniform or Scale Invariant distributions
-                             for depth bins. See AdaBins [1] for more details.
-                             "chmv2_mixlog" uses customized mixed log bins for the CHMv2 head.
-        norm_strategy (str): Choices are 'linear', 'softmax', 'sigmoid' or 'chmv2_mixlog', for the conversion of features to depth logits
+            min_depth (float): minimum depth, used to calibrate the depth range
+            max_depth (float): maximum depth, used to calibrate the depth range
+            bins_strategy (str): Choices are 'linear', 'log', or 'chmv2_mixlog'. The first two are for Uniform or Scale
+                Invariant distributions for depth bins. See AdaBins [1] for more details. "chmv2_mixlog" uses customized
+                mixed log bins for the CHMv2 head.
+            norm_strategy (str): Choices are 'linear', 'softmax', 'sigmoid' or 'chmv2_mixlog', for the conversion of
+                features to depth logits
 
-        Example:
+        Examples:
         x = depth_model(input_image)  # N C H W
         - If pure regression (C == 1), depth is obtained by scaling and/or shifting x
         - If C > 1, bins are used:

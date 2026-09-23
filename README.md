@@ -68,15 +68,15 @@ GUI 内的 RF-DETR 训练即调用 `train_rfdetr.py` 作为子进程，参数一
 
 ## 目录结构（要点）
 
-| 文件 / 目录 | 说明 |
-|---|---|
-| `main.py` | PyQt6 主界面入口 |
-| `workers.py` | 训练 / 验证 / 导出后台 worker（YOLO 进程内；RF-DETR 子进程隔离） |
-| `rfdetr_adapter.py` | RF-DETR 数据集适配与训练封装 |
-| `train_rfdetr.py` / `train_yolo.py` | 命令行训练脚本 |
-| `ultralytics/` | 内置 ultralytics 8.4.132（含 YOLO26 支持） |
-| `部署教程_Windows_x64.md` / `部署教程_Ubuntu22_ARM64.md` | 部署说明 |
-| `RF-DETR训练说明.md` | RF-DETR 训练专项说明 |
+| 文件 / 目录                                              | 说明                                                             |
+| -------------------------------------------------------- | ---------------------------------------------------------------- |
+| `main.py`                                                | PyQt6 主界面入口                                                 |
+| `workers.py`                                             | 训练 / 验证 / 导出后台 worker（YOLO 进程内；RF-DETR 子进程隔离） |
+| `rfdetr_adapter.py`                                      | RF-DETR 数据集适配与训练封装                                     |
+| `train_rfdetr.py` / `train_yolo.py`                      | 命令行训练脚本                                                   |
+| `ultralytics/`                                           | 内置 ultralytics 8.4.132（含 YOLO26 支持）                       |
+| `部署教程_Windows_x64.md` / `部署教程_Ubuntu22_ARM64.md` | 部署说明                                                         |
+| `RF-DETR训练说明.md`                                     | RF-DETR 训练专项说明                                             |
 
 ## 说明
 
