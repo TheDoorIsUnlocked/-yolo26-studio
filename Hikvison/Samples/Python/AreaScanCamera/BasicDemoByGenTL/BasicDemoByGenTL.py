@@ -1,11 +1,10 @@
-# -- coding: utf-8 --
 import os
 
-from PyQt5.QtWidgets import *
+from CameraParams_header import *
 from CamOperation_class import CameraOperation
 from MvCameraControl_class import *
 from MvErrorDefine_const import *
-from CameraParams_header import *
+from PyQt5.QtWidgets import *
 from PyUICBasicDemoByGenTL import Ui_MainWindow
 
 
@@ -21,10 +20,10 @@ def TxtWrapBy(start_str, end, all):
 
 # 将返回的错误码转换为十六进制显示
 def ToHexStr(num):
-    chaDic = {10: 'a', 11: 'b', 12: 'c', 13: 'd', 14: 'e', 15: 'f'}
+    chaDic = {10: "a", 11: "b", 12: "c", 13: "d", 14: "e", 15: "f"}
     hexStr = ""
     if num < 0:
-        num = num + 2 ** 32
+        num = num + 2**32
     while num >= 16:
         digit = num % 16
         hexStr = chaDic.get(digit, str(digit)) + hexStr
@@ -34,7 +33,6 @@ def ToHexStr(num):
 
 
 if __name__ == "__main__":
-
     # ch:初始化SDK | en: initialize SDK
     MvCamera.MV_CC_Initialize()
 
@@ -57,7 +55,6 @@ if __name__ == "__main__":
     global isCalibMode  # 是否是标定模式（获取原始图像）
     isCalibMode = True
 
-
     # 绑定下拉列表至设备信息索引
     def xFunc(event):
         global nSelCamIndex
@@ -65,26 +62,24 @@ if __name__ == "__main__":
 
     # Decoding Characters
     def decoding_char(ctypes_char_array):
-        """
-        安全地从 ctypes 字符数组中解码出字符串。
-        适用于 Python 2.x 和 3.x，以及 32/64 位环境。
+        """安全地从 ctypes 字符数组中解码出字符串。 适用于 Python 2.x 和 3.x，以及 32/64 位环境。.
         """
         byte_str = memoryview(ctypes_char_array).tobytes()
-        
+
         # 在第一个空字符处截断
-        null_index = byte_str.find(b'\x00')
+        null_index = byte_str.find(b"\x00")
         if null_index != -1:
             byte_str = byte_str[:null_index]
-        
+
         # 多编码尝试解码
-        for encoding in ['gbk', 'utf-8', 'latin-1']:
+        for encoding in ["gbk", "utf-8", "latin-1"]:
             try:
                 return byte_str.decode(encoding)
             except UnicodeDecodeError:
                 continue
-        
+
         # 如果所有编码都失败，使用替换策略
-        return byte_str.decode('latin-1', errors='replace')
+        return byte_str.decode("latin-1", errors="replace")
 
     # ch:枚举采集卡 | en:enum interfaces
     def enum_interfaces():
@@ -94,9 +89,9 @@ if __name__ == "__main__":
         # 对话框选择cti文件
         # 使用当前工作目录作为默认路径，支持跨平台
         current_dir = os.getcwd()
-        fileName, fileType = QFileDialog.getOpenFileName(mainWindow, "选择cti文件",
-                                                         directory=current_dir,
-                                                         filter="Cti文件(*cti)")
+        fileName, _fileType = QFileDialog.getOpenFileName(
+            mainWindow, "选择cti文件", directory=current_dir, filter="Cti文件(*cti)"
+        )
         if fileName is None or len(fileName) == 0:
             return -1
 
@@ -113,7 +108,7 @@ if __name__ == "__main__":
         print("Find %d interfaces!" % interfaceList.nInterfaceNum)
 
         ifListTemp = []
-        for i in range(0, interfaceList.nInterfaceNum):
+        for i in range(interfaceList.nInterfaceNum):
             ifInfoTemp = cast(interfaceList.pIFInfo[i], POINTER(MV_GENTL_IF_INFO)).contents
             chTLType = decoding_char(ifInfoTemp.chTLType)
             chInterfaceID = decoding_char(ifInfoTemp.chInterfaceID)
@@ -145,7 +140,7 @@ if __name__ == "__main__":
         print("Find %d devices!" % deviceList.nDeviceNum)
 
         devListTemp = []
-        for i in range(0, deviceList.nDeviceNum):
+        for i in range(deviceList.nDeviceNum):
             devInfoTemp = cast(deviceList.pDeviceInfo[i], POINTER(MV_GENTL_DEV_INFO)).contents
 
             chDeviceID = decoding_char(devInfoTemp.chDeviceID)
@@ -162,12 +157,12 @@ if __name__ == "__main__":
         global obj_cam_operation
         global isOpen
         if isOpen:
-            QMessageBox.warning(mainWindow, "Error", 'Camera is Running!', QMessageBox.Ok)
+            QMessageBox.warning(mainWindow, "Error", "Camera is Running!", QMessageBox.Ok)
             return MV_E_CALLORDER
 
         nSelCamIndex = ui.comboDevice.currentIndex()
         if nSelCamIndex < 0:
-            QMessageBox.warning(mainWindow, "Error", 'Please select a camera!', QMessageBox.Ok)
+            QMessageBox.warning(mainWindow, "Error", "Please select a camera!", QMessageBox.Ok)
             return MV_E_CALLORDER
 
         obj_cam_operation = CameraOperation(cam, deviceList, nSelCamIndex)
@@ -271,9 +266,9 @@ if __name__ == "__main__":
             strError = "Get param failed ret:" + ToHexStr(ret)
             QMessageBox.warning(mainWindow, "Error", strError, QMessageBox.Ok)
         else:
-            ui.edtExposureTime.setText("{0:.2f}".format(obj_cam_operation.exposure_time))
-            ui.edtGain.setText("{0:.2f}".format(obj_cam_operation.gain))
-            ui.edtFrameRate.setText("{0:.2f}".format(obj_cam_operation.frame_rate))
+            ui.edtExposureTime.setText(f"{obj_cam_operation.exposure_time:.2f}")
+            ui.edtGain.setText(f"{obj_cam_operation.gain:.2f}")
+            ui.edtFrameRate.setText(f"{obj_cam_operation.frame_rate:.2f}")
 
     # ch: 设置参数
     def set_param():
@@ -339,7 +334,7 @@ if __name__ == "__main__":
 
     # PyQt5兼容性检查
     try:
-        if hasattr(app, 'exec_'):
+        if hasattr(app, "exec_"):
             app.exec_()
         else:
             app.exec()
@@ -348,10 +343,9 @@ if __name__ == "__main__":
 
     # 等待一段时间确保设备完全关闭
     import time
+
     time.sleep(0.2)
 
-
     MvCamera.MV_CC_Finalize()
-
 
     sys.exit()

@@ -3,17 +3,16 @@
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
 
-import logging
+from __future__ import annotations
 
+import logging
 from typing import Any
+
 import torch
 import torch.utils
 import torch.utils.data
 
-import dinov3.distributed as distributed
-from dinov3.logging import MetricLogger
-
-
+from dinov3 import distributed
 from dinov3.eval.depth.config import (
     DepthConfig,
     ResultConfig,
@@ -21,11 +20,11 @@ from dinov3.eval.depth.config import (
 )
 from dinov3.eval.depth.data import build_dataloader
 from dinov3.eval.depth.datasets.datasets_utils import _EvalCropType, make_valid_mask
-from dinov3.eval.depth.metrics import calculate_depth_metrics, _DepthMetric, DEPTH_METRICS
+from dinov3.eval.depth.metrics import DEPTH_METRICS, _DepthMetric, calculate_depth_metrics
 from dinov3.eval.depth.transforms import Aug, LeftRightFlipAug
 from dinov3.eval.depth.utils import align_depth_least_square
 from dinov3.eval.depth.visualization_utils import depth_tensor_to_colorized_pil, save_predictions
-
+from dinov3.logging import MetricLogger
 
 logger = logging.getLogger("dinov3")
 
@@ -83,8 +82,7 @@ def evaluate_depther_with_dataloader(
     align_least_squares: bool = False,
     use_tta: bool = False,
 ):
-    """
-    Evaluate a dense estimation model with a dataloader
+    """Evaluate a dense estimation model with a dataloader.
 
     Inputs:
     - dataloader: a torch.utils.data.DataLoader
@@ -100,7 +98,6 @@ def evaluate_depther_with_dataloader(
     - align_least_squares (bool): if True, aligns prediction in scale and shift with GT using least squares error minimization
     - use_tta (bool): if True, uses left-right flipping test time augmentation (default False).
     """
-
     metric_names = [metric.name for metric in metrics]
     all_metric_values_dict: dict[str, Any] = {metric: [] for metric in metric_names}
     all_metric_values_dict["indices"] = []
@@ -131,7 +128,7 @@ def evaluate_depther_with_dataloader(
             continue
 
         # in case tta inflated the batch
-        B, C, _, _ = preds.shape
+        B, _C, _, _ = preds.shape
         gt_map = gt_map[:B]
 
         # run post processing on ground truth and prediction

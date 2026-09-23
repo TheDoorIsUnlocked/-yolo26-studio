@@ -3,6 +3,8 @@
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
 
+from __future__ import annotations
+
 import math
 from collections import namedtuple
 from dataclasses import dataclass
@@ -46,8 +48,10 @@ def calculate_depth_metrics(
     gt: torch.Tensor,
     pred: torch.Tensor,
     valid_mask: torch.Tensor | None = None,
-    list_metrics: list[_DepthMetric] = list(DEPTH_METRICS),
+    list_metrics: list[_DepthMetric] | None = None,
 ):
+    if list_metrics is None:
+        list_metrics = list(DEPTH_METRICS)
     if gt.shape[0] == 0:
         return [torch.nan] * len(DEPTH_METRICS)
 
