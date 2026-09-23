@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 """
-YOLO 命令行训练脚本（不依赖界面，底层调用 ultralytics 官方 `yolo` CLI）
+YOLO 命令行训练脚本（不依赖界面，底层调用 ultralytics 官方 `yolo` CLI）.
 
 之所以包一层：本机 `yolo.exe` 装在 conda base（torch 2.5.1），而 Ultralytics Studio
 跑在 conda `yolo` 环境（torch 2.9.1），直接敲 `yolo` 可能用到错误的解释器/版本。
@@ -15,6 +14,7 @@ YOLO 命令行训练脚本（不依赖界面，底层调用 ultralytics 官方 `
 其余 ultralytics 原生参数可用 `--extra key=value` 透传：
     python train_yolo.py --data 3631.yaml --model yolo26n.pt --extra close_mosaic=0 mixup=0.1
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,8 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--model", required=True, help="模型文件（.pt/.yaml）")
     p.add_argument("--data", default=None, help="数据集 YAML")
     p.add_argument("--epochs", type=int, default=100)
-    p.add_argument("--batch", default=None,
-                   help="物理 batch；-1 为自动，-0.5 为按显存百分比；留空用默认 16")
+    p.add_argument("--batch", default=None, help="物理 batch；-1 为自动，-0.5 为按显存百分比；留空用默认 16")
     p.add_argument("--imgsz", type=int, default=640)
     p.add_argument("--device", default="0", help="0 / 0,1 / cpu")
     p.add_argument("--workers", type=int, default=0, help="Windows 建议 0；Linux 可 8")
@@ -49,28 +48,33 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--lrf", type=float, default=0.01, help="最终学习率系数(lr0*lrf)")
     p.add_argument("--weight-decay", type=float, default=0.0005)
     p.add_argument("--patience", type=int, default=100, help="早停耐心轮数，0=关")
-    p.add_argument("--project", default=None,
-                   help="输出根目录，留空用 ultralytics 默认（runs/<task>）")
+    p.add_argument("--project", default=None, help="输出根目录，留空用 ultralytics 默认（runs/<task>）")
     p.add_argument("--name", default=None, help="本次运行名，留空自动 train/train2…")
     p.add_argument("--resume", action="store_true", help="从 last.pt 断点续训")
     p.add_argument("--amp", action="store_true", default=True, help="混合精度")
     p.add_argument("--no-amp", dest="amp", action="store_false", help="关闭混合精度")
     p.add_argument("--cache", default=False, help="False / ram / disk")
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--auto-fix-data", dest="auto_fix", action="store_true", default=True,
-                   help="自动修正数据集路径（train/images 与 images/train 两种布局）")
-    p.add_argument("--no-auto-fix-data", dest="auto_fix", action="store_false",
-                   help="关掉上面的自动修正，原样使用 --data")
-    p.add_argument("--extra", nargs="*", default=[],
-                   help="透传其它 ultralytics 参数，形如 key=value")
+    p.add_argument(
+        "--auto-fix-data",
+        dest="auto_fix",
+        action="store_true",
+        default=True,
+        help="自动修正数据集路径（train/images 与 images/train 两种布局）",
+    )
+    p.add_argument(
+        "--no-auto-fix-data", dest="auto_fix", action="store_false", help="关掉上面的自动修正，原样使用 --data"
+    )
+    p.add_argument("--extra", nargs="*", default=[], help="透传其它 ultralytics 参数，形如 key=value")
     return p
 
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
 
-    from ultralytics import YOLO
     import torch
+
+    from ultralytics import YOLO
 
     # Ultralytics 不会像 RF-DETR 适配器那样自动处理目录布局，
     # 这里借用同一套适配器把 yaml 里的路径修正到磁盘真实目录。
@@ -78,12 +82,12 @@ def main(argv=None) -> int:
     if args.auto_fix and args.data:
         try:
             from rfdetr_adapter import prepare_rfdetr_dataset
+
             info = prepare_rfdetr_dataset(args.data)
             data_yaml = info["data_yaml"]
             for note in info.get("notes", []):
                 print("· " + str(note))
-            print(f"[数据] {info['dataset_dir']}  （{info['num_classes']} 类："
-                  f"{list(info['names'].values())}）")
+            print(f"[数据] {info['dataset_dir']}  （{info['num_classes']} 类：{list(info['names'].values())}）")
         except Exception as e:
             print(f"[数据] 自动修正失败（{e}），改用原始配置：{args.data}")
 
@@ -132,9 +136,11 @@ def main(argv=None) -> int:
         kwargs[k] = _coerce(v)
 
     print("-" * 72)
-    print(f"[配置] task={args.task}  model={args.model}  epochs={args.epochs}  "
-          f"batch={kwargs.get('batch', '默认')}  imgsz={args.imgsz}  "
-          f"lr0={args.lr0}  amp={args.amp}  resume={args.resume}")
+    print(
+        f"[配置] task={args.task}  model={args.model}  epochs={args.epochs}  "
+        f"batch={kwargs.get('batch', '默认')}  imgsz={args.imgsz}  "
+        f"lr0={args.lr0}  amp={args.amp}  resume={args.resume}"
+    )
 
     model = YOLO(args.model)
     try:

@@ -3,11 +3,14 @@
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
 
+from __future__ import annotations
+
 import logging
 from enum import Enum
 
-from dinov3.eval.depth.models.embed import CenterPadding, StretchToMultiple
 from torch import Tensor, nn
+
+from dinov3.eval.depth.models.embed import CenterPadding, StretchToMultiple
 
 logger = logging.getLogger("dinov3")
 
@@ -23,16 +26,12 @@ def _get_backbone_out_indices(
     model: nn.Module,
     backbone_out_layers: list[int] | tuple[int, ...] | BackboneLayersSet = BackboneLayersSet.FOUR_EVEN_INTERVALS,
 ):
-    """
-    Get indices for output layers of the ViT backbone. For now there are 3 options available:
-    BackboneLayersSet.LAST : only extract the last layer, used in segmentation tasks with a bn head.
-    BackboneLayersSet.FOUR_LAST : extract the last 4 layers, used in segmentation (multiscale setting)
-    BackboneLayersSet.FOUR_EVEN_INTERVALS : extract outputs every 1/4 of the total number of blocks
-    Reference outputs in 'FOUR_EVEN_INTERVALS' mode :
-    ViT/S (12 blocks): [2, 5, 8, 11]
-    ViT/B (12 blocks): [2, 5, 8, 11]
-    ViT/L (24 blocks): [5, 11, 17, 23] (correct), [4, 11, 17, 23] (incorrect)
-    ViT/g (40 blocks): [9, 19, 29, 39]
+    """Get indices for output layers of the ViT backbone. For now there are 3 options available: BackboneLayersSet.LAST
+    : only extract the last layer, used in segmentation tasks with a bn head. BackboneLayersSet.FOUR_LAST : extract
+    the last 4 layers, used in segmentation (multiscale setting) BackboneLayersSet.FOUR_EVEN_INTERVALS : extract
+    outputs every 1/4 of the total number of blocks Reference outputs in 'FOUR_EVEN_INTERVALS' mode : ViT/S (12
+    blocks): [2, 5, 8, 11] ViT/B (12 blocks): [2, 5, 8, 11] ViT/L (24 blocks): [5, 11, 17, 23] (correct), [4, 11,
+    17, 23] (incorrect) ViT/g (40 blocks): [9, 19, 29, 39].
     """
     n_blocks = getattr(model, "n_blocks", 1)
     out_indices: list[int]
@@ -48,7 +47,7 @@ def _get_backbone_out_indices(
             out_indices = [4, 11, 17, 23]
         else:
             out_indices = [i * (n_blocks // 4) - 1 for i in range(1, 5)]
-    assert all([out_index < n_blocks for out_index in out_indices])
+    assert all(out_index < n_blocks for out_index in out_indices)
     return out_indices
 
 
@@ -78,19 +77,19 @@ class DinoVisionTransformerWrapper(nn.Module):
 
         # If the backbone does not define embed_dims, use [embed_dim] * n_blocks
         try:
-            embed_dims: list[int] = getattr(self.backbone, "embed_dims")
+            embed_dims: list[int] = self.backbone.embed_dims
         except AttributeError:
-            embed_dim: int = getattr(self.backbone, "embed_dim")
-            n_blocks: int = getattr(self.backbone, "n_blocks")
+            embed_dim: int = self.backbone.embed_dim
+            n_blocks: int = self.backbone.n_blocks
             logger.warning(f"Backbone does not define embed_dims, using {[embed_dim] * n_blocks} instead")
             embed_dims = [embed_dim] * n_blocks
         self.embed_dims = [embed_dims[idx] for idx in self.backbone_out_indices]
 
         # How to adapt input images to the patch size of the model?
         try:
-            input_pad_size = getattr(self.backbone, "input_pad_size")
+            input_pad_size = self.backbone.input_pad_size
         except AttributeError:
-            patch_size = getattr(self.backbone, "patch_size")
+            patch_size = self.backbone.patch_size
             logger.warning(f"Backbone does not define input_pad_size, using {patch_size=} instead")
             input_pad_size = patch_size
         self.patch_size_adapter: nn.Module = nn.Identity()
