@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from enum import Enum
 from functools import partial
 
@@ -100,14 +102,14 @@ class L1Loss(nn.Module):
 
 
 class SigLoss(nn.Module):
-    """Sigloss
+    """Sigloss.
 
     Adapted from Binsformer who adapted from AdaBins
     https://github.com/zhyever/Monocular-Depth-Estimation-Toolbox/blob/7c0c89c8db07631fec1737f3087e4f1f540ccd53/depth/models/losses/sigloss.py#L8
     """
 
     def __init__(self, warm_up=True, warm_iter=100):
-        super(SigLoss, self).__init__()
+        super().__init__()
         self.loss_name = "SigLoss"
         self.eps = 0.001  # avoid grad explode
         self.warm_up = warm_up
@@ -132,32 +134,30 @@ class SigLoss(nn.Module):
 
     def forward(self, depth_pred, depth_gt, valid_mask=None):
         """Forward function."""
-
         return self.sigloss(depth_pred, depth_gt, valid_mask)
 
 
 class MultiLoss(nn.Module):
-    """
-    losses adapted from https://www.cs.cornell.edu/projects/megadepth/
+    """losses adapted from https://www.cs.cornell.edu/projects/megadepth/.
 
     Args:
-        dict_losses: (dict[LossType, float, Any]) a dict of losses in the format {LossType_1: Weight_1, ..., LossType_N: Weight_N}.
+        dict_losses: (dict[LossType, float, Any]) a dict of losses in the format {LossType_1: Weight_1, ..., LossType_N:
+            Weight_N}.
     """
 
     def __init__(
         self,
         dict_losses: dict[LossType, float],
     ):
-        super(MultiLoss, self).__init__()
-        self.dict_losses = nn.ModuleDict({loss_type.name: loss_type.module() for loss_type in dict_losses.keys()})
+        super().__init__()
+        self.dict_losses = nn.ModuleDict({loss_type.name: loss_type.module() for loss_type in dict_losses})
         self.dict_weights = {loss_type.name: weight for (loss_type, weight) in dict_losses.items()}
         self.eps = 0.001  # avoid grad explode
 
     def forward(self, depth_pred, depth_gt, valid_mask=None):
         """Forward function."""
-
         loss_depth = 0
-        for loss_name in self.dict_losses.keys():
+        for loss_name in self.dict_losses:
             weight = self.dict_weights[loss_name]
             loss = self.dict_losses[loss_name](depth_pred, depth_gt, valid_mask)
             loss_depth += weight * loss
