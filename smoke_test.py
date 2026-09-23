@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-"""部署后自检（端到端冒烟测试）：UI 可用性 + 训练 → 导出 → 验证 全链路。
+"""部署后自检（端到端冒烟测试）：UI 可用性 + 训练 → 导出 → 验证 全链路。.
 
 用途：
     新电脑部署完成后跑一遍，确认「环境 + 代码 + 数据」三者都配对：
@@ -14,6 +13,7 @@
 - 训练只跑 1 epoch，控制耗时（本地 4GB 显卡约 70~120 秒）。
 - 产物落在 runs/ 下，不影响仓库（已被 .gitignore 忽略）。
 """
+
 import glob
 import os
 import sys
@@ -29,10 +29,10 @@ os.environ.setdefault("RF_HOME", os.path.join(ROOT, ".rfdetr_models"))
 
 os.chdir(ROOT)
 
-from PyQt6.QtCore import QEventLoop, QTimer              # noqa: E402
-from PyQt6.QtWidgets import QApplication, QPushButton    # noqa: E402
+from PyQt6.QtCore import QEventLoop, QTimer
+from PyQt6.QtWidgets import QApplication, QPushButton
 
-import main as app_main  # noqa: E402
+import main as app_main
 
 # 默认值可被命令行参数覆盖
 DATA_YAML = sys.argv[1] if len(sys.argv) > 1 else "4940_has_labled.yaml"
@@ -69,8 +69,7 @@ def wait_for(signal, timeout_ms, label):
     t0 = time.time()
     loop.exec()
     timer.stop()
-    print("   %s 耗时 %.1fs -> %s" % (label, time.time() - t0,
-                                      "完成" if state["done"] else "超时!"))
+    print("   {} 耗时 {:.1f}s -> {}".format(label, time.time() - t0, "完成" if state["done"] else "超时!"))
     return state["done"]
 
 
@@ -91,12 +90,12 @@ def main():
     print("数据集:", DATA_YAML, "| 基础模型:", BASE_MODEL, "| epochs:", EPOCHS)
     print("=" * 64)
 
-    assert os.path.exists(DATA_YAML), "找不到数据集 yaml: %s" % DATA_YAML
+    assert os.path.exists(DATA_YAML), f"找不到数据集 yaml: {DATA_YAML}"
 
-    app = QApplication(sys.argv)
+    QApplication(sys.argv)
     w = app_main.MainWindow()
-    w.log = log                      # 捕获日志，便于断言与排查
-    w.current_device = "0"           # 有 CUDA 就用 GPU
+    w.log = log  # 捕获日志，便于断言与排查
+    w.current_device = "0"  # 有 CUDA 就用 GPU
 
     # ---------------------------------------------------------------- 结构
     print()
@@ -112,8 +111,7 @@ def main():
         assert w.tabs.currentIndex() == i, f"导航 {i} 错位"
     print("   10 个标签页 + 导航索引一致  OK")
 
-    nb = [x for x in w.findChildren(QPushButton)
-          if x.property("class") == "NumButton"]
+    nb = [x for x in w.findChildren(QPushButton) if x.property("class") == "NumButton"]
     print("   显式 ± 按钮数量:", len(nb))
     assert len(nb) >= 5, f"± 按钮过少({len(nb)})，可能未全部套用 _num_row"
     print("   ± 按钮齐备  OK")
@@ -189,13 +187,14 @@ def main():
 
     try:
         import onnxruntime as ort
+
         sess = ort.InferenceSession(onnx, providers=["CPUExecutionProvider"])
         inp = sess.get_inputs()[0]
         print("   ONNXRuntime 可加载，输入:", inp.name, inp.shape)
         RESULT["ort"] = "OK"
     except Exception as e:
         print("   ONNXRuntime 校验失败:", e)
-        RESULT["ort"] = "FAIL: %s" % e
+        RESULT["ort"] = f"FAIL: {e}"
 
     # ---------------------------------------------------------------- 验证
     print()
@@ -229,6 +228,7 @@ def main():
     print("=" * 64)
     try:
         from rfdetr_adapter import prepare_rfdetr_dataset, rfdetr_available
+
         avail = rfdetr_available()
         print("   rfdetr 已安装:", avail)
         if avail:
@@ -245,8 +245,7 @@ def main():
                 print("   该数据集不适用于 RF-DETR（不影响 YOLO 功能）:", e)
         else:
             print("   跳过（未装 rfdetr，属正常；见教程第 15 节）")
-        for name in ("rf_variant", "rf_epochs", "rf_batch", "rf_grad",
-                     "rf_lr", "rf_opset", "rf_split"):
+        for name in ("rf_variant", "rf_epochs", "rf_batch", "rf_grad", "rf_lr", "rf_opset", "rf_split"):
             assert hasattr(w, name), f"RF-DETR 控件缺失: {name}"
         print("   RF-DETR 页控件齐备  OK")
     except Exception as e:
@@ -272,5 +271,6 @@ if __name__ == "__main__":
         sys.exit(1)
     except Exception:
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

@@ -3,13 +3,16 @@
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
 
+from __future__ import annotations
+
 import math
-from typing import Any, Tuple, Union
 from enum import Enum
+from typing import Any
 
 from torch import nn
 
-from .backbones import dinov3_vitl16, Weights as BackboneWeights, convert_path_or_url_to_url
+from .backbones import Weights as BackboneWeights
+from .backbones import convert_path_or_url_to_url, dinov3_vitl16
 from .utils import _DINOV3_BASE_URL, _safe_load_state_dict_from_url
 
 
@@ -21,11 +24,11 @@ class DINOTxtWeights(Enum):
 def dinov3_vitl16_dinotxt_tet1280d20h24l(
     *,
     pretrained: bool = True,
-    weights: Union[DINOTxtWeights, str] = DINOTxtWeights.LVTD2300M,
-    backbone_weights: Union[BackboneWeights, str] = BackboneWeights.LVD1689M,
+    weights: DINOTxtWeights | str = DINOTxtWeights.LVTD2300M,
+    backbone_weights: BackboneWeights | str = BackboneWeights.LVD1689M,
     bpe_path_or_url: str = "https://dl.fbaipublicfiles.com/dinov3/thirdparty/bpe_simple_vocab_16e6.txt.gz",
     check_hash: bool = False,
-) -> Tuple[nn.Module, Any]:
+) -> tuple[nn.Module, Any]:
     from dinov3.eval.text.dinotxt_model import DINOTxt, DINOTxtConfig
     from dinov3.eval.text.text_transformer import TextTransformer
     from dinov3.eval.text.tokenizer import get_tokenizer
@@ -71,7 +74,7 @@ def dinov3_vitl16_dinotxt_tet1280d20h24l(
         if type(weights) is DINOTxtWeights and weights == DINOTxtWeights.LVTD2300M:
             url = f"{_DINOV3_BASE_URL}/dinov3_vitl16/dinov3_vitl16_dinotxt_vision_head_and_text_encoder-a442d8f5.pth"
         elif type(weights) is DINOTxtWeights and weights != DINOTxtWeights.LVTD2300M:
-            raise AssertionError(f"Unsuported weights for DINOTxt: {weights}")
+            raise AssertionError(f"Unsupported weights for DINOTxt: {weights}")
         else:
             url = convert_path_or_url_to_url(weights)
         vision_head_and_text_encoder_state_dict = _safe_load_state_dict_from_url(
