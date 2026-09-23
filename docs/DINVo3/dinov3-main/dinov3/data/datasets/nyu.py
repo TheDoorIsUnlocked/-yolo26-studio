@@ -3,9 +3,11 @@
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
 
+from __future__ import annotations
+
 import os
 from enum import Enum
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Union
 
 from PIL import Image
 
@@ -35,11 +37,11 @@ class NYU(ExtendedVisionDataset):
     def __init__(
         self,
         *,
-        split: "NYU.Split",
-        root: Optional[str] = None,
-        transforms: Optional[Callable] = None,
-        transform: Optional[Callable] = None,
-        target_transform: Optional[Callable] = None,
+        split: NYU.Split,
+        root: str | None = None,
+        transforms: Callable | None = None,
+        transform: Callable | None = None,
+        target_transform: Callable | None = None,
         image_decoder: Decoder = ImageDataDecoder,
         target_decoder: Decoder = DenseTargetDecoder,
     ) -> None:
