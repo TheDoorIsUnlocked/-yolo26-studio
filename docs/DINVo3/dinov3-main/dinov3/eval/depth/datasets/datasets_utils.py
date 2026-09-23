@@ -14,7 +14,7 @@ class _EvalCropType(Enum):
 
 
 def make_valid_mask(input, eval_crop: _EvalCropType = _EvalCropType.FULL, ignored_value: float = 0.0):
-    """Following Adabins, Do grag_crop or eigen_crop for testing
+    """Following Adabins, Do grag_crop or eigen_crop for testing.
 
     Args:
         input: input tensor in BxCxHxW format
