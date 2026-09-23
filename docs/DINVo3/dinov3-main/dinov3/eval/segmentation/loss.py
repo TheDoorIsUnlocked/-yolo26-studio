@@ -18,7 +18,7 @@ def reduce_loss(loss, reduction) -> torch.Tensor:
         loss (Tensor): Elementwise loss tensor.
         reduction (str): Options are "none", "mean" and "sum".
 
-    Return:
+    Returns:
         Tensor: Reduced loss tensor.
     """
     reduction_enum = nn._reduction.get_enum(reduction)
@@ -69,12 +69,10 @@ def weight_reduce_loss(loss, weight=None, reduction="mean", avg_factor=None) -> 
 def weighted_loss(loss_func):
     """Create a weighted version of a given loss function.
 
-    To use this decorator, the loss function must have the signature like
-    `loss_func(pred, target, **kwargs)`. The function only needs to compute
-    element-wise loss without any reduction. This decorator will add weight
-    and reduction arguments to the function. The decorated function will have
-    the signature like `loss_func(pred, target, weight=None, reduction='mean',
-    avg_factor=None, **kwargs)`.
+    To use this decorator, the loss function must have the signature like `loss_func(pred, target, **kwargs)`. The
+    function only needs to compute element-wise loss without any reduction. This decorator will add weight and reduction
+    arguments to the function. The decorated function will have the signature like `loss_func(pred, target, weight=None,
+    reduction='mean', avg_factor=None, **kwargs)`.
     """
 
     @functools.wraps(loss_func)
@@ -91,8 +89,7 @@ def get_class_weight(class_weight):
     """Get class weight for loss function.
 
     Args:
-        class_weight (list[float] | str | None): If class_weight is a str,
-            take it as a file name and read from it.
+        class_weight (list[float] | str | None): If class_weight is a str, take it as a file name and read from it.
     """
     if isinstance(class_weight, str):
         class_weight = np.load(class_weight)
@@ -130,26 +127,25 @@ def binary_dice_loss(pred, target, valid_mask, smooth=1, exponent=2, **kwargs):
 
 
 class DiceLoss(nn.Module):
-    """DiceLoss.
+    r"""DiceLoss.
 
-    This loss is proposed in `V-Net: Fully Convolutional Neural Networks for
-    Volumetric Medical Image Segmentation <https://arxiv.org/abs/1606.04797>`_.
+    This loss is proposed in `V-Net: Fully Convolutional Neural Networks for Volumetric Medical Image Segmentation
+    <https://arxiv.org/abs/1606.04797>`_.
 
     Args:
         smooth (float): A float number to smooth loss, and avoid NaN error.
-            Default: 1
+        Default: 1
         exponent (float): An float number to calculate denominator
-            value: \\sum{x^exponent} + \\sum{y^exponent}. Default: 2.
-        reduction (str, optional): The method used to reduce the loss. Options
-            are "none", "mean" and "sum". This parameter only works when
+        value: \\sum{x^exponent} + \\sum{y^exponent}. Default: 2.
+        reduction (str, optional): The method used to reduce the loss. Options are "none", "mean" and "sum". This
+            parameter only works when
             per_image is True. Default: 'mean'.
-        class_weight (list[float] | str, optional): Weight of each class. If in
-            str format, read them from a file. Defaults to None.
+        class_weight (list[float] | str, optional): Weight of each class. If in str format, read them from a file.
+            Defaults to None.
         loss_weight (float, optional): Weight of the loss. Default to 1.0.
         ignore_index (int | None): The label index to be ignored. Default: 255.
-        loss_name (str, optional): Name of the loss item. If you want this loss
-            item to be included into the backward graph, `loss_` must be the
-            prefix of the name. Defaults to 'loss_dice'.
+        loss_name (str, optional): Name of the loss item. If you want this loss item to be included into the backward
+            graph, `loss_` must be the prefix of the name. Defaults to 'loss_dice'.
     """
 
     def __init__(
@@ -163,7 +159,7 @@ class DiceLoss(nn.Module):
         loss_name="loss_dice",
         **kwargs,
     ):
-        super(DiceLoss, self).__init__()
+        super().__init__()
         self.smooth = smooth
         self.exponent = exponent
         self.reduction = reduction
@@ -255,7 +251,7 @@ class CrossEntropyLoss(nn.Module):
         ignore_index=255,
         avg_non_ignore=False,
     ):
-        super(CrossEntropyLoss, self).__init__()
+        super().__init__()
         self.weight = weight
         self.class_weight = class_weight
         self.loss_weight = loss_weight
@@ -277,12 +273,10 @@ class CrossEntropyLoss(nn.Module):
 
 
 class MultiSegmentationLoss(nn.Module):
-    """
-    Combine different losses used in segmentation.
-    """
+    """Combine different losses used in segmentation."""
 
     def __init__(self, diceloss_weight=0.0, celoss_weight=0.0):
-        super(MultiSegmentationLoss, self).__init__()
+        super().__init__()
 
         if diceloss_weight > 0:
             self.loss = MultilabelDiceLoss(loss_weight=diceloss_weight)
