@@ -1,22 +1,20 @@
-# -*- coding: utf-8 -*-
 import sys
-import time
 
-from PyQt5.QtWidgets import *
-from PyQt5.QtGui import QTextCursor
+from CameraParams_header import *
 from CamOperation_class import CameraOperation
 from MvCameraControl_class import *
 from MvErrorDefine_const import *
-from CameraParams_header import *
+from PyQt5.QtGui import QTextCursor
+from PyQt5.QtWidgets import *
 from PyUIMultipleCameras import Ui_MainWindow
-import ctypes
+
 
 # 将返回的错误码转换为十六进制显示
 def ToHexStr(num):
-    chaDic = {10: 'a', 11: 'b', 12: 'c', 13: 'd', 14: 'e', 15: 'f'}
+    chaDic = {10: "a", 11: "b", 12: "c", 13: "d", 14: "e", 15: "f"}
     hexStr = ""
     if num < 0:
-        num = num + 2 ** 32
+        num = num + 2**32
     while num >= 16:
         digit = num % 16
         hexStr = chaDic.get(digit, str(digit)) + hexStr
@@ -24,32 +22,30 @@ def ToHexStr(num):
     hexStr = chaDic.get(num, str(num)) + hexStr
     return hexStr
 
+
 # Decoding Characters
 def decoding_char(ctypes_char_array):
-    """
-    安全地从 ctypes 字符数组中解码出字符串。
-    适用于 Python 2.x 和 3.x，以及 32/64 位环境。
+    """安全地从 ctypes 字符数组中解码出字符串。 适用于 Python 2.x 和 3.x，以及 32/64 位环境。.
     """
     byte_str = memoryview(ctypes_char_array).tobytes()
-    
+
     # 在第一个空字符处截断
-    null_index = byte_str.find(b'\x00')
+    null_index = byte_str.find(b"\x00")
     if null_index != -1:
         byte_str = byte_str[:null_index]
-    
+
     # 多编码尝试解码
-    for encoding in ['gbk', 'utf-8', 'latin-1']:
+    for encoding in ["gbk", "utf-8", "latin-1"]:
         try:
             return byte_str.decode(encoding)
         except UnicodeDecodeError:
             continue
-    
+
     # 如果所有编码都失败，使用替换策略
-    return byte_str.decode('latin-1', errors='replace')
+    return byte_str.decode("latin-1", errors="replace")
 
 
 if __name__ == "__main__":
-
     global deviceList
     deviceList = MV_CC_DEVICE_INFO_LIST()
 
@@ -77,7 +73,6 @@ if __name__ == "__main__":
     global b_is_software_trigger
     b_is_software_trigger = False
 
-
     # ch:初始化SDK | en: initialize SDK
     MvCamera.MV_CC_Initialize()
 
@@ -91,10 +86,15 @@ if __name__ == "__main__":
         global deviceList
         global valid_number
         deviceList = MV_CC_DEVICE_INFO_LIST()
-        n_layer_type = (MV_GIGE_DEVICE | MV_USB_DEVICE
-                        | MV_GENTL_GIGE_DEVICE | MV_GENTL_CAMERALINK_DEVICE
-                        | MV_GENTL_CXP_DEVICE | MV_GENTL_XOF_DEVICE)
-        ret = MvCamera.MV_CC_EnumDevicesEx2(n_layer_type, deviceList, '', SortMethod_SerialNumber)
+        n_layer_type = (
+            MV_GIGE_DEVICE
+            | MV_USB_DEVICE
+            | MV_GENTL_GIGE_DEVICE
+            | MV_GENTL_CAMERALINK_DEVICE
+            | MV_GENTL_CXP_DEVICE
+            | MV_GENTL_XOF_DEVICE
+        )
+        ret = MvCamera.MV_CC_EnumDevicesEx2(n_layer_type, deviceList, "", SortMethod_SerialNumber)
         if ret != 0:
             str_error = "Enum devices fail! ret = :" + ToHexStr(ret)
             QMessageBox.warning(mainWindow, "Error", str_error, QMessageBox.Ok)
@@ -106,7 +106,7 @@ if __name__ == "__main__":
         print_text("Find %d devices!" % deviceList.nDeviceNum)
 
         valid_number = 0
-        for i in range(0, 4):
+        for i in range(4):
             if (i < deviceList.nDeviceNum) is True:
                 serial_number = ""
                 model_name = ""
@@ -118,10 +118,10 @@ if __name__ == "__main__":
                     print("device user define name: " + user_defined_name)
                     print("device model name: " + model_name)
 
-                    nip1 = ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0xff000000) >> 24)
-                    nip2 = ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x00ff0000) >> 16)
-                    nip3 = ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x0000ff00) >> 8)
-                    nip4 = (mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x000000ff)
+                    nip1 = (mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0xFF000000) >> 24
+                    nip2 = (mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x00FF0000) >> 16
+                    nip3 = (mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x0000FF00) >> 8
+                    nip4 = mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x000000FF
                     print("current ip: %d.%d.%d.%d " % (nip1, nip2, nip3, nip4))
 
                     serial_number = decoding_char(mvcc_dev_info.SpecialInfo.stGigEInfo.chSerialNumber)
@@ -174,7 +174,7 @@ if __name__ == "__main__":
     def cam_check_box_clicked():
         global cam_checked_list
         cam_checked_list = []
-        for i in range(0, 4):
+        for i in range(4):
             button = cam_button_group.button(i)
             if button.isChecked() is True:
                 cam_checked_list.append(True)
@@ -218,7 +218,7 @@ if __name__ == "__main__":
             print_text("please select a camera !")
             return
         obj_cam_operation = []
-        for i in range(0, 4):
+        for i in range(4):
             if cam_checked_list[i] is True:
                 b_checked = True
                 camObj = MvCamera()
@@ -242,8 +242,8 @@ if __name__ == "__main__":
             ui.radioButton_continuous.setChecked(True)
             enable_ui_controls()
 
-        for i in range(0, 4):
-            if(i < valid_number) is True:
+        for i in range(4):
+            if (i < valid_number) is True:
                 button_by_id = cam_button_group.button(i)
                 button_by_id.setEnabled(not b_is_open)
 
@@ -252,18 +252,18 @@ if __name__ == "__main__":
         global b_is_software_trigger
         if (ui.checkBox_software_trigger.isChecked()) is True:
             b_is_software_trigger = True
-            for i in range(0, 4):
+            for i in range(4):
                 if obj_cam_operation[i] != 0:
                     ret = obj_cam_operation[i].set_trigger_source("software")
                     if 0 != ret:
-                        print_text('camera' + str(i) + ' set trigger source: software  fail! ret = ' + ToHexStr(ret))
+                        print_text("camera" + str(i) + " set trigger source: software  fail! ret = " + ToHexStr(ret))
         else:
             b_is_software_trigger = False
-            for i in range(0, 4):
+            for i in range(4):
                 if obj_cam_operation[i] != 0:
                     ret = obj_cam_operation[i].set_trigger_source("hardware")
                     if 0 != ret:
-                        print_text('camera' + str(i) + ' set trigger source: hardware  fail! ret = ' + ToHexStr(ret))
+                        print_text("camera" + str(i) + " set trigger source: hardware  fail! ret = " + ToHexStr(ret))
         enable_ui_controls()
 
     def radio_button_clicked(button):
@@ -272,20 +272,20 @@ if __name__ == "__main__":
         button_id = raio_button_group.id(button)
         if (button_id == 0) is True:
             b_is_trigger = False
-            for i in range(0, 4):
+            for i in range(4):
                 if obj_cam_operation[i] != 0:
                     ret = obj_cam_operation[i].set_trigger_mode("continuous")
                     if 0 != ret:
-                        print_text('camera' + str(i) + ' set trigger mode: continuous fail! ret = ' + ToHexStr(ret))
+                        print_text("camera" + str(i) + " set trigger mode: continuous fail! ret = " + ToHexStr(ret))
             enable_ui_controls()
 
         else:
             b_is_trigger = True
-            for i in range(0, 4):
+            for i in range(4):
                 if obj_cam_operation[i] != 0:
                     ret = obj_cam_operation[i].set_trigger_mode("triggermode")
                     if 0 != ret:
-                        print_text('camera' + str(i) + ' set trigger on fail! ret = ' + ToHexStr(ret))
+                        print_text("camera" + str(i) + " set trigger on fail! ret = " + ToHexStr(ret))
             enable_ui_controls()
 
     def close_devices():
@@ -297,11 +297,11 @@ if __name__ == "__main__":
             return
         if b_is_grab is True:
             stop_grabbing()
-        for i in range(0, 4):
+        for i in range(4):
             if obj_cam_operation[i] != 0:
                 ret = obj_cam_operation[i].close_device()
                 if 0 != ret:
-                    print_text('camera' + str(i) + ' close device fail! ret = ' + ToHexStr(ret))
+                    print_text("camera" + str(i) + " close device fail! ret = " + ToHexStr(ret))
 
             if i < valid_number:
                 button_by_id = cam_button_group.button(i)
@@ -318,11 +318,11 @@ if __name__ == "__main__":
         if (not b_is_open) or (b_is_grab is True):
             return
 
-        for i in range(0, 4):
+        for i in range(4):
             if obj_cam_operation[i] != 0:
                 ret = obj_cam_operation[i].start_grabbing(i, win_display_handles[i])
                 if 0 != ret:
-                    print_text('camera' + str(i) + ' start grabbing fail! ret = ' + ToHexStr(ret))
+                    print_text("camera" + str(i) + " start grabbing fail! ret = " + ToHexStr(ret))
                 b_is_grab = True
         enable_ui_controls()
 
@@ -333,11 +333,11 @@ if __name__ == "__main__":
 
         if (not b_is_open) or (b_is_grab is False):
             return
-        for i in range(0, 4):
+        for i in range(4):
             if obj_cam_operation[i] != 0:
                 ret = obj_cam_operation[i].stop_grabbing()
                 if 0 != ret:
-                    print_text('camera' + str(i) + ' stop grabbing fail!ret = ' + ToHexStr(ret))
+                    print_text("camera" + str(i) + " stop grabbing fail!ret = " + ToHexStr(ret))
                 b_is_grab = False
         enable_ui_controls()
 
@@ -348,11 +348,11 @@ if __name__ == "__main__":
 
         if b_is_grab is False:
             return
-        for i in range(0, 4):
+        for i in range(4):
             if obj_cam_operation[i] != 0:
                 ret = obj_cam_operation[i].save_bmp()
                 if 0 != ret:
-                    print_text('camera' + str(i) + ' save bmp fail!ret = ' + ToHexStr(ret))
+                    print_text("camera" + str(i) + " save bmp fail!ret = " + ToHexStr(ret))
 
     def is_float(str_value):
         try:
@@ -375,24 +375,24 @@ if __name__ == "__main__":
             print_text("parameters is valid, please check")
             return
 
-        for i in range(0, 4):
+        for i in range(4):
             if obj_cam_operation[i] != 0:
                 ret = obj_cam_operation[i].set_exposure_time(exposure_time)
                 if ret != 0:
-                    print_text('camera' + str(i) + ' Set exposure time failed ret:' + ToHexStr(ret))
+                    print_text("camera" + str(i) + " Set exposure time failed ret:" + ToHexStr(ret))
                 ret = obj_cam_operation[i].set_gain(gain)
                 if ret != 0:
-                    print_text('camera' + str(i) + ' Set gain failed ret:' + ToHexStr(ret))
+                    print_text("camera" + str(i) + " Set gain failed ret:" + ToHexStr(ret))
                 ret = obj_cam_operation[i].set_frame_rate(frame_rate)
                 if ret != 0:
-                    print_text('camera' + str(i) + ' set acquisition frame rate failed ret:' + ToHexStr(ret))
+                    print_text("camera" + str(i) + " set acquisition frame rate failed ret:" + ToHexStr(ret))
 
     def software_trigger_once():
-        for i in range(0, 4):
+        for i in range(4):
             if obj_cam_operation[i] != 0:
                 ret = obj_cam_operation[i].trigger_once()
                 if ret != 0:
-                    print_text('camera' + str(i) + 'TriggerSoftware failed ret:' + ToHexStr(ret))
+                    print_text("camera" + str(i) + "TriggerSoftware failed ret:" + ToHexStr(ret))
 
     # ch: 初始化app, 绑定控件与函数 | en: Init app, bind ui and api
     app = QApplication(sys.argv)
