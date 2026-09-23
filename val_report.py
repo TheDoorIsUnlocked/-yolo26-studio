@@ -1,4 +1,4 @@
-"""模型验证结果整理、自动评价与报告生成（无 GUI 依赖，便于单元测试）。
+"""模型验证结果整理、自动评价与报告生成（无 GUI 依赖，便于单元测试）。.
 
 对外提供三个核心能力：
 1. collect_val_results(metrics, meta) —— 把 ultralytics 的 DetMetrics 对象整理成结构化字典，
@@ -40,7 +40,7 @@ _PR_THRESHOLDS = [
 
 
 def _grade(value: float, thresholds: list[tuple[float, str]]) -> str:
-    """根据阈值表返回指标评级。"""
+    """根据阈值表返回指标评级。."""
     for thr, grade in thresholds:
         if value >= thr:
             return grade
@@ -53,54 +53,61 @@ def _grade(value: float, thresholds: list[tuple[float, str]]) -> str:
 METRIC_EXPLAIN = {
     "precision": (
         "精确率 (Precision)",
-        "在所有被模型判定为“目标”的预测框中，真正确实是目标的比例（TP / (TP + FP)）。"
-        "精确率越高，误报（把背景或无关物体错认成目标）越少。",
+        (
+            "在所有被模型判定为“目标”的预测框中，真正确实是目标的比例（TP / (TP + FP)）。"
+            "精确率越高，误报（把背景或无关物体错认成目标）越少。"
+        ),
     ),
     "recall": (
         "召回率 (Recall)",
-        "在所有真实存在的目标中，被模型成功检出的比例（TP / (TP + FN)）。"
-        "召回率越高，漏检越少。精确率与召回率往往此消彼长。",
+        (
+            "在所有真实存在的目标中，被模型成功检出的比例（TP / (TP + FN)）。"
+            "召回率越高，漏检越少。精确率与召回率往往此消彼长。"
+        ),
     ),
     "f1": (
         "F1 分数",
-        "精确率与召回率的调和平均：F1 = 2·P·R / (P + R)。"
-        "它更关注两者的短板，是单一数值综合衡量检测完整性的常用指标。",
+        (
+            "精确率与召回率的调和平均：F1 = 2·P·R / (P + R)。"
+            "它更关注两者的短板，是单一数值综合衡量检测完整性的常用指标。"
+        ),
     ),
     "map50": (
         "mAP@0.5",
-        "IoU 交并比阈值为 0.5 时的平均精度均值（mean Average Precision）。"
-        "定位要求较宽松，主要反映“模型能否大致把目标框住”。",
+        (
+            "IoU 交并比阈值为 0.5 时的平均精度均值（mean Average Precision）。"
+            "定位要求较宽松，主要反映“模型能否大致把目标框住”。"
+        ),
     ),
     "map": (
         "mAP@0.5:0.95",
-        "在 IoU 0.50、0.55、…、0.95 共 10 个阈值上的平均 mAP 再取均值。"
-        "这是目标检测领域最常用、最综合的精度指标，阈值越严格越能体现定位精准度。",
+        (
+            "在 IoU 0.50、0.55、…、0.95 共 10 个阈值上的平均 mAP 再取均值。"
+            "这是目标检测领域最常用、最综合的精度指标，阈值越严格越能体现定位精准度。"
+        ),
     ),
     "map75": (
         "mAP@0.75",
-        "IoU 阈值为 0.75 时的平均精度均值，代表更严格（更精准）的定位能力，"
-        "常用于评估模型在高精度要求场景下的表现。",
+        ("IoU 阈值为 0.75 时的平均精度均值，代表更严格（更精准）的定位能力，常用于评估模型在高精度要求场景下的表现。"),
     ),
     "fitness": (
         "综合适应度 (Fitness)",
-        "YOLO 训练阶段默认优化的目标，数值上等于 mAP@0.5:0.95，"
-        "用于在不同训练轮次/模型之间做横向比较。",
+        ("YOLO 训练阶段默认优化的目标，数值上等于 mAP@0.5:0.95，用于在不同训练轮次/模型之间做横向比较。"),
     ),
 }
 
 
 def evaluate_results(scalar: dict[str, float]) -> dict[str, Any]:
-    """对核心指标自动评级并生成改进建议。
+    """对核心指标自动评级并生成改进建议。.
 
     Args:
         scalar: 包含 precision / recall / map50 / map 等浮点指标的字典。
 
     Returns:
         {
-            "overall_grade": str,
-            "metrics": {显示名: {"value": float, "grade": str}},
-            "suggestions": [str, ...],
-        }
+        "overall_grade": str,
+        "metrics": {显示名: {"value": float, "grade": str}},
+        "suggestions": [str, ...], }
     """
     p = float(scalar.get("precision", 0.0) or 0.0)
     r = float(scalar.get("recall", 0.0) or 0.0)
@@ -118,13 +125,11 @@ def evaluate_results(scalar: dict[str, float]) -> dict[str, Any]:
     suggestions: list[str] = []
     if p < 0.6 and p < r - 0.10:
         suggestions.append(
-            "精确率明显偏低（误报偏多）：可尝试提高置信度阈值(conf)、"
-            "增加难负样本挖掘或数据增强、并核查标注是否过松。"
+            "精确率明显偏低（误报偏多）：可尝试提高置信度阈值(conf)、增加难负样本挖掘或数据增强、并核查标注是否过松。"
         )
     if r < 0.6 and r < p - 0.10:
         suggestions.append(
-            "召回率明显偏低（漏检偏多）：可尝试降低置信度阈值、"
-            "扩充训练数据、检查标注完整性，或适当增大模型容量。"
+            "召回率明显偏低（漏检偏多）：可尝试降低置信度阈值、扩充训练数据、检查标注完整性，或适当增大模型容量。"
         )
     if mapv < 0.50:
         suggestions.append(
@@ -141,7 +146,7 @@ def evaluate_results(scalar: dict[str, float]) -> dict[str, Any]:
 
 
 def collect_val_results(metrics: Any, meta: dict[str, Any]) -> dict[str, Any]:
-    """把 ultralytics 的 DetMetrics 整理成结构化结果字典。
+    """把 ultralytics 的 DetMetrics 整理成结构化结果字典。.
 
     Args:
         metrics: 由 model.val() 返回的 DetMetrics 对象（检测任务）。
@@ -164,7 +169,7 @@ def collect_val_results(metrics: Any, meta: dict[str, Any]) -> dict[str, Any]:
     mapv = float(getattr(box, "map", 0.0) or 0.0)
     map75 = float(getattr(box, "map75", 0.0) or 0.0)
     try:
-        fitness = float(getattr(box, "fitness")())
+        fitness = float(box.fitness())
     except Exception:
         fitness = mapv
     f1 = (2.0 * mp * mr / (mp + mr + EPS)) if (mp + mr) > 0 else 0.0
@@ -258,7 +263,7 @@ def _fmt(v: Any, nd: int = 4) -> str:
 
 
 def build_markdown(results: dict[str, Any]) -> str:
-    """生成 Markdown 格式的验证报告（含参数含义详解与综合评价）。"""
+    """生成 Markdown 格式的验证报告（含参数含义详解与综合评价）。."""
     meta = results.get("meta", {})
     scalar = results.get("scalar", {})
     ev = results.get("evaluation", {})
@@ -373,7 +378,7 @@ def build_markdown(results: dict[str, Any]) -> str:
         lines.append("")
         lines.append("_（行=真实类别，列=预测类别；数值为样本计数。完整矩阵另存于验证结果目录。）_")
         lines.append("")
-        names_list = [meta.get("names", {})]  # placeholder, not used below
+        [meta.get("names", {})]  # placeholder, not used below
         try:
             import numpy as np
 
@@ -393,5 +398,5 @@ def build_markdown(results: dict[str, Any]) -> str:
 
 
 def build_json(results: dict[str, Any]) -> str:
-    """生成 JSON 格式的验证结果（机器可读，含全部指标与评价）。"""
+    """生成 JSON 格式的验证结果（机器可读，含全部指标与评价）。."""
     return json.dumps(results, ensure_ascii=False, indent=2, default=str)
