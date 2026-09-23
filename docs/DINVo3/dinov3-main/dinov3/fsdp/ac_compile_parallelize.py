@@ -3,13 +3,15 @@
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
 
+from __future__ import annotations
+
 import logging
 from functools import partial
-from typing import Any, Dict, List
+from typing import Any
 
 import torch
 import torch.distributed as dist
-import torch.nn as nn
+from torch import nn
 from torch.distributed._composable.fsdp import MixedPrecisionPolicy, fully_shard
 from torch.distributed.device_mesh import DeviceMesh, init_device_mesh
 from torch.distributed.fsdp import register_fsdp_forward_method
@@ -17,7 +19,6 @@ from torch.distributed.fsdp._fully_shard._fsdp_state import FSDPState
 from torch.utils.checkpoint import create_selective_checkpoint_contexts
 
 from dinov3.utils import utils
-
 
 logger = logging.getLogger("dinov3")
 
@@ -86,7 +87,7 @@ def compile_transformer(cfg, model: nn.Module):
         model.blocks[block_id] = wrap_compile_block(block, cfg.train.cudagraphs, is_backbone_block=True)
 
 
-def fsdp_convnext(fsdp_config: Dict[str, Any], model: nn.Module):
+def fsdp_convnext(fsdp_config: dict[str, Any], model: nn.Module):
     stages = model.stages
     assert isinstance(stages, nn.ModuleList)
     # FSDP wrap at stage level
@@ -107,7 +108,7 @@ def fsdp_convnext(fsdp_config: Dict[str, Any], model: nn.Module):
     register_fsdp_forward_method(model, "get_intermediate_layers")
 
 
-def fsdp_transformer(fsdp_config: Dict[str, Any], model: nn.Module):
+def fsdp_transformer(fsdp_config: dict[str, Any], model: nn.Module):
     # Backbone - FSDP every block
     blocks = model.blocks
     assert isinstance(blocks, nn.ModuleList)
@@ -125,20 +126,16 @@ def fsdp_transformer(fsdp_config: Dict[str, Any], model: nn.Module):
 
 def ac_compile_parallelize(
     trained_model: nn.ModuleDict,
-    inference_only_models: List[nn.ModuleDict],
+    inference_only_models: list[nn.ModuleDict],
     cfg: Any,
     trained_model_process_group: dist.ProcessGroup | None = None,
-    inference_only_models_process_groups: List[dist.ProcessGroup] | None = None,
+    inference_only_models_process_groups: list[dist.ProcessGroup] | None = None,
 ) -> None:
+    """Order of the wrappers: 1/ Activation checkpointing on blocks 2/ Compile blocks 3/ FSDP blocks + global model.
     """
-    Order of the wrappers:
-    1/ Activation checkpointing on blocks
-    2/ Compile blocks
-    3/ FSDP blocks + global model
-    """
-    assert (
-        isinstance(trained_model, nn.ModuleDict) and "backbone" in trained_model.keys()
-    ), f"{trained_model} does not contain a backbone?"
+    assert isinstance(trained_model, nn.ModuleDict) and "backbone" in trained_model, (
+        f"{trained_model} does not contain a backbone?"
+    )
     logger.info("DISTRIBUTED FSDP -- preparing model for distributed training")
     if utils.has_batchnorms(trained_model):
         raise NotImplementedError
@@ -148,34 +145,34 @@ def ac_compile_parallelize(
 
     # FSDP utils for each architecture type
     ARCH_TYPE_MAP = {
-        ConvNeXt: dict(
-            compile_fn=compile_convnext,
-            fsdp_fn=fsdp_convnext,
-            activation_checkpointing_fn=activation_checkpoint_convnext,
-        ),
-        DinoVisionTransformer: dict(
-            compile_fn=compile_transformer,
-            fsdp_fn=fsdp_transformer,
-            activation_checkpointing_fn=activation_checkpoint_transformer,
-        ),
+        ConvNeXt: {
+            "compile_fn": compile_convnext,
+            "fsdp_fn": fsdp_convnext,
+            "activation_checkpointing_fn": activation_checkpoint_convnext,
+        },
+        DinoVisionTransformer: {
+            "compile_fn": compile_transformer,
+            "fsdp_fn": fsdp_transformer,
+            "activation_checkpointing_fn": activation_checkpoint_transformer,
+        },
     }
 
     # 1/ AC on blocks
     if cfg.train.checkpointing:
         ARCH_TYPE_MAP[type(trained_model.backbone)]["activation_checkpointing_fn"](cfg, trained_model["backbone"])
     # 2/ Compile blocks
-    all_models = [trained_model] + inference_only_models
+    all_models = [trained_model, *inference_only_models]
     if trained_model_process_group is None and inference_only_models_process_groups is None:
         all_pgs = [None] * len(all_models)
     elif trained_model_process_group is None:
-        all_pgs = [None] + inference_only_models_process_groups
+        all_pgs = [None, *inference_only_models_process_groups]
     elif inference_only_models_process_groups is None:
         all_pgs = [trained_model_process_group] + [None] * len(inference_only_models_process_groups)
     else:
-        all_pgs = [trained_model_process_group] + inference_only_models_process_groups
+        all_pgs = [trained_model_process_group, *inference_only_models_process_groups]
     if cfg.train.compile:
         for model in all_models:
-            for k in model.keys():
+            for k in model:
                 if k == "backbone":
                     ARCH_TYPE_MAP[type(model[k])]["compile_fn"](cfg, model[k])
                 else:
@@ -199,7 +196,7 @@ def ac_compile_parallelize(
         else:
             world_mesh = DeviceMesh.from_group(pg, "cuda")
         fsdp_config = {"mesh": world_mesh, "mp_policy": mp_policy}
-        for k in model.keys():
+        for k in model:
             if k == "backbone":
                 ARCH_TYPE_MAP[type(model[k])]["fsdp_fn"](fsdp_config, model[k])
             else:
@@ -211,7 +208,7 @@ def ac_compile_parallelize(
 
     # 5/ FSDP2: Reshard immediately after forward for inference-only models
     for model in inference_only_models:
-        for k in model.keys():
+        for k in model:
             fsdp_state: FSDPState = model[k]._get_fsdp_state()
             if not fsdp_state._fsdp_param_group:
                 continue
