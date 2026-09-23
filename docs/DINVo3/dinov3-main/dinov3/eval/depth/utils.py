@@ -3,9 +3,11 @@
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
 
-import logging
-import numpy as np
+from __future__ import annotations
 
+import logging
+
+import numpy as np
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 
@@ -18,9 +20,8 @@ def align_depth_least_square(
     valid_mask_arr: np.ndarray | torch.Tensor,
     max_resolution=None,
 ):
-    """
-    Adapted from Marigold
-    https://github.com/prs-eth/Marigold/blob/62413d56099d36573b2de1eb8c429839734b7782/src/util/alignment.py#L8
+    """Adapted from Marigold
+    https://github.com/prs-eth/Marigold/blob/62413d56099d36573b2de1eb8c429839734b7782/src/util/alignment.py#L8.
     """
     ori_shape = pred_arr.shape  # input shape
     dtype = pred_arr.dtype
@@ -72,13 +73,10 @@ def align_depth_least_square(
 
 
 def create_chmv2_mixlog_bins(min_depth, max_depth, n_bins, device):
-    """
-    Creates mixed log bins for the CHMv2 model.
-    Bins are interpolated between linear and log distributions.
+    """Creates mixed log bins for the CHMv2 model. Bins are interpolated between linear and log distributions.
 
-    Note: max_depth is divided by 8.0 because the CHMv2 model was trained
-    with internally scaled depth values. The scaling is reversed in
-    `create_outputs_with_chmv2_mixlog_norm` by multiplying by 8.0.
+    Note: max_depth is divided by 8.0 because the CHMv2 model was trained with internally scaled depth values. The
+    scaling is reversed in `create_outputs_with_chmv2_mixlog_norm` by multiplying by 8.0.
     """
     scaled_max_depth = max_depth / 8.0
     linear = torch.linspace(min_depth, scaled_max_depth, n_bins, device=device)
@@ -102,13 +100,10 @@ def create_outputs_with_chmv2_mixlog_norm(
     eps_shift: float = 1e-8,
     eps: float = 1e-12,
 ) -> torch.Tensor:
-    """
-    Converts depth bin logits to depth values using mixlog normalization, specifically
-    for the CHMv2 model.
-    This function implements a "soft-argmax" style depth prediction, where the output
-    is a weighted sum of depth bins, with weights derived from the input logits.
-    The CHMv2 model outputs values that are 8x smaller than actual depth in meters,
-    so we multiply by 8.0 at the end.
+    """Converts depth bin logits to depth values using mixlog normalization, specifically for the CHMv2 model. This
+    function implements a "soft-argmax" style depth prediction, where the output is a weighted sum of depth bins,
+    with weights derived from the input logits. The CHMv2 model outputs values that are 8x smaller than actual depth
+    in meters, so we multiply by 8.0 at the end.
 
     Args:
         input: Raw logits from the decoder head.

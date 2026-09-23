@@ -1,4 +1,3 @@
-
 class Theme:
     # Dark Theme Colors
     DARK = {
@@ -10,7 +9,7 @@ class Theme:
         "PRIMARY_LIGHT": "#2962ff",
         "ACCENT": "#00c853",
         "BORDER": "#333333",
-        "INPUT_BG": "#2d2d2d"
+        "INPUT_BG": "#2d2d2d",
     }
 
     # Light Theme Colors
@@ -23,7 +22,7 @@ class Theme:
         "PRIMARY_LIGHT": "#5c6bc0",
         "ACCENT": "#00e676",
         "BORDER": "#e0e0e0",
-        "INPUT_BG": "#ffffff"
+        "INPUT_BG": "#ffffff",
     }
 
     CURRENT_THEME = "Light"

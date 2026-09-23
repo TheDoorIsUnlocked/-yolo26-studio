@@ -11,16 +11,15 @@ from typing import Any
 import numpy as np
 import torch
 
-from dinov3.data import make_dataset, make_data_loader, DatasetWithEnumeratedTargets, SamplerType
-import dinov3.distributed as distributed
-
+from dinov3 import distributed
+from dinov3.data import DatasetWithEnumeratedTargets, SamplerType, make_data_loader, make_dataset
 
 logger = logging.getLogger("dinov3")
 
 
 def worker_init_fn(worker_id, num_workers, rank, seed):
-    """Worker init func for dataloader.
-    The seed of each worker equals to num_worker * rank + worker_id + user_seed
+    """Worker init func for dataloader. The seed of each worker equals to num_worker * rank + worker_id + user_seed.
+
     Args:
         worker_id (int): Worker id.
         num_workers (int): Number of workers.
@@ -44,21 +43,13 @@ def build_dataloader(
     seed: int = 0,
     use_init_fn=False,
 ):
-    """
-    Build a dataloader from lavida descriptor strings.
-    One can specify either a list of descriptors or a single one.
-    When a list is used, the resulting dataset is
-    a concatenation of all the listed datasets.
+    """Build a dataloader from lavida descriptor strings. One can specify either a list of descriptors or a single one.
+    When a list is used, the resulting dataset is a concatenation of all the listed datasets.
 
-    transforms: transforms for the dataset
-    dataset_str (str): a dataset descriptor, e.g. 'NYU:split=TRAIN'
-    device (int): id for the GPU rank
-    split (str): dataset split (choice: ['train', 'val', 'test'])
-    batch_size (int): batch size
-    n_gpus (int): number of ranks to use for distributed sampler
-    num_workers (int): number of workers for the dataloader
-    seed (int): random seed
-    use_init_fn (bool): if True, initializes workers with worker_init_fn
+    transforms: transforms for the dataset dataset_str (str): a dataset descriptor, e.g. 'NYU:split=TRAIN' device (int):
+    id for the GPU rank split (str): dataset split (choice: ['train', 'val', 'test']) batch_size (int): batch size
+    n_gpus (int): number of ranks to use for distributed sampler num_workers (int): number of workers for the dataloader
+    seed (int): random seed use_init_fn (bool): if True, initializes workers with worker_init_fn
     """
     assert split in ["train", "val", "test"]
     is_train = split == "train"
