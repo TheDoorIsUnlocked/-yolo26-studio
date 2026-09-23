@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 """
-RF-DETR 命令行训练脚本（不依赖界面，独立进程跑，显存更省、崩了不影响界面）
+RF-DETR 命令行训练脚本（不依赖界面，独立进程跑，显存更省、崩了不影响界面）.
 
 用法示例：
     python train_rfdetr.py --data 3631.yaml --variant Nano --epochs 50
@@ -9,10 +8,10 @@ RF-DETR 命令行训练脚本（不依赖界面，独立进程跑，显存更省
 
 全部参数见 --help。数据集支持 train/images 与 images/train 两种布局，自动识别。
 """
+
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -20,7 +19,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-MB = 1024 ** 2
+MB = 1024**2
 
 VARIANTS = {
     "nano": "RFDETRNano",
@@ -48,33 +47,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     g_data = p.add_argument_group("数据与模型")
     g_data.add_argument("--data", required=True, help="数据集 YAML（Ultralytics 格式）")
-    g_data.add_argument("--variant", default="nano", choices=list(VARIANTS),
-                        help="模型变体")
-    g_data.add_argument("--resolution", type=int, default=None,
-                        help="输入分辨率，必须是 patch_size*num_windows 的倍数；留空用变体默认值")
+    g_data.add_argument("--variant", default="nano", choices=list(VARIANTS), help="模型变体")
+    g_data.add_argument(
+        "--resolution",
+        type=int,
+        default=None,
+        help="输入分辨率，必须是 patch_size*num_windows 的倍数；留空用变体默认值",
+    )
     g_data.add_argument("--resume", default=None, help="从已有 checkpoint（.pth）继续训练")
 
     g_train = p.add_argument_group("训练超参")
     g_train.add_argument("--epochs", type=int, default=50)
-    g_train.add_argument("--batch", default="auto",
-                         help="物理 batch，auto 让 RF-DETR 自己探测显存")
+    g_train.add_argument("--batch", default="auto", help="物理 batch，auto 让 RF-DETR 自己探测显存")
     g_train.add_argument("--grad-accum", type=int, default=4, help="梯度累积步数")
     g_train.add_argument("--lr", type=float, default=1e-4)
-    g_train.add_argument("--lr-encoder", type=float, default=1.5e-4,
-                         help="backbone 学习率，一般不用改")
+    g_train.add_argument("--lr-encoder", type=float, default=1.5e-4, help="backbone 学习率，一般不用改")
     g_train.add_argument("--weight-decay", type=float, default=1e-4)
     g_train.add_argument("--device", default="cuda", help="cuda / cuda:0 / cpu")
-    g_train.add_argument("--num-workers", type=int, default=0,
-                         help="Windows 下保持 0；Linux 可设 4~8")
-    g_train.add_argument("--no-ema", action="store_true",
-                         help="关闭 EMA（省显存，4GB 卡建议关）")
+    g_train.add_argument("--num-workers", type=int, default=0, help="Windows 下保持 0；Linux 可设 4~8")
+    g_train.add_argument("--no-ema", action="store_true", help="关闭 EMA（省显存，4GB 卡建议关）")
     g_train.add_argument("--early-stop", action="store_true", help="启用早停")
     g_train.add_argument("--patience", type=int, default=10, help="早停耐心轮数")
     g_train.add_argument("--run-test", action="store_true", help="训练结束后用 test 集再评估一次")
 
     g_out = p.add_argument_group("输出")
-    g_out.add_argument("--output", default=str(HERE / "rfdetr_output"),
-                       help="输出根目录，每次训练在其下自动递增建 trainN 子目录")
+    g_out.add_argument(
+        "--output", default=str(HERE / "rfdetr_output"), help="输出根目录，每次训练在其下自动递增建 trainN 子目录"
+    )
     g_out.add_argument("--run-name", default=None, help="指定子目录名，不给则自动 trainN")
     g_out.add_argument("--export", action="store_true", help="训练完自动导出 ONNX")
     g_out.add_argument("--opset", type=int, default=17)
@@ -113,7 +112,7 @@ def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
 
     try:
-        from rfdetr_adapter import prepare_rfdetr_dataset, ensure_rf_home, RFDETRDatasetError
+        from rfdetr_adapter import RFDETRDatasetError, ensure_rf_home, prepare_rfdetr_dataset
     except Exception as e:
         print(f"[错误] 无法导入 rfdetr_adapter.py：{e}")
         return 2
@@ -140,6 +139,7 @@ def main(argv=None) -> int:
 
     # 3) 建模型
     import rfdetr
+
     cls_name = VARIANTS[args.variant.lower()]
     model = getattr(rfdetr, cls_name)()
 
@@ -147,30 +147,32 @@ def main(argv=None) -> int:
     res = args.resolution or DEFAULT_RESOLUTION[args.variant.lower()]
 
     print("-" * 72)
-    print(f"[配置] 变体={cls_name}  分辨率={res}  epochs={args.epochs}  "
-          f"batch={batch}  grad_accum={args.grad_accum}  lr={args.lr}  "
-          f"EMA={'关' if args.no_ema else '开'}")
-
-    train_kwargs = dict(
-        dataset_file="yolo",
-        dataset_dir=info["dataset_dir"],
-        epochs=args.epochs,
-        batch_size=batch,
-        grad_accum_steps=args.grad_accum,
-        lr=args.lr,
-        lr_encoder=args.lr_encoder,
-        weight_decay=args.weight_decay,
-        device=args.device,
-        num_workers=args.num_workers,
-        output_dir=str(run_dir),
-        resolution=res,
-        use_ema=not args.no_ema,
-        early_stopping=args.early_stop,
-        early_stopping_patience=args.patience,
-        run_test=args.run_test,
-        tensorboard=False,
-        wandb=False,
+    print(
+        f"[配置] 变体={cls_name}  分辨率={res}  epochs={args.epochs}  "
+        f"batch={batch}  grad_accum={args.grad_accum}  lr={args.lr}  "
+        f"EMA={'关' if args.no_ema else '开'}"
     )
+
+    train_kwargs = {
+        "dataset_file": "yolo",
+        "dataset_dir": info["dataset_dir"],
+        "epochs": args.epochs,
+        "batch_size": batch,
+        "grad_accum_steps": args.grad_accum,
+        "lr": args.lr,
+        "lr_encoder": args.lr_encoder,
+        "weight_decay": args.weight_decay,
+        "device": args.device,
+        "num_workers": args.num_workers,
+        "output_dir": str(run_dir),
+        "resolution": res,
+        "use_ema": not args.no_ema,
+        "early_stopping": args.early_stop,
+        "early_stopping_patience": args.patience,
+        "run_test": args.run_test,
+        "tensorboard": False,
+        "wandb": False,
+    }
     if args.resume:
         train_kwargs["resume"] = args.resume
 

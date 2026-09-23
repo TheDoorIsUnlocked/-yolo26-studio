@@ -3,8 +3,10 @@
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
 
-from inspect import signature
+from __future__ import annotations
+
 import math
+from inspect import signature
 from typing import Any, Literal
 
 import torch
@@ -16,13 +18,13 @@ TORCH_VERSION = Version(torch.__version__)
 
 
 def annealing_cos(start, end, pct):
-    "Cosine anneal from `start` to `end` as pct goes from 0.0 to 1.0."
+    """Cosine anneal from `start` to `end` as pct goes from 0.0 to 1.0."""
     cos_out = math.cos(math.pi * pct) + 1
     return end + (start - end) / 2.0 * cos_out
 
 
 def annealing_linear(start, end, pct):
-    "Linearly anneal from `start` to `end` as pct goes from 0.0 to 1.0."
+    """Linearly anneal from `start` to `end` as pct goes from 0.0 to 1.0."""
     return (end - start) * pct + start
 
 
@@ -44,9 +46,8 @@ class WarmupOneCycleLR(torch_schedulers.LRScheduler):
         update_momentum: bool = True,
         last_epoch: int = -1,
     ):
-        """
-        A variant of OneCycleLR with a warmup on top which potentially
-        replaces the first phase of the original OneCycleLR.
+        """A variant of OneCycleLR with a warmup on top which potentially replaces the first phase of the original
+        OneCycleLR.
         """
         self.warmup_iters = warmup_iters
         self.warmup_ratio = warmup_ratio
@@ -133,7 +134,7 @@ class WarmupOneCycleLR(torch_schedulers.LRScheduler):
 
         if step_num > self.total_steps:
             raise ValueError(
-                f"Tried to step {step_num} times. The specified number of total steps is {self.total_steps}"  # noqa: UP032
+                f"Tried to step {step_num} times. The specified number of total steps is {self.total_steps}"
             )
 
         for group in self.optimizer.param_groups:
@@ -165,17 +166,17 @@ def build_scheduler(
             _kwargs.pop(key)
     if scheduler_type in ["OneCycleLR", "WarmupOneCycleLR", "WarmupMultiStepLR"]:
         _kwargs.update(
-            dict(
-                max_lr=lr,
-                total_steps=total_iter,
-            )
+            {
+                "max_lr": lr,
+                "total_steps": total_iter,
+            }
         )
     elif scheduler_type in [
         "ConstantLR",
         "LinearLR",
         "PolynomialLR",
     ]:
-        constructor_kwargs.update(dict(total_iters=total_iter))
+        constructor_kwargs.update({"total_iters": total_iter})
 
     return constructor_fn(optimizer, **_kwargs)
 
