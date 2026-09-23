@@ -1,12 +1,13 @@
 import os
-import subprocess
 import shutil
+import subprocess
+
 
 def build_exe():
     # Define build parameters
     script_path = "main.py"
     app_name = "YOLO26_Studio"
-    
+
     # Clean previous builds
     if os.path.exists("build"):
         shutil.rmtree("build")
@@ -38,19 +39,20 @@ def build_exe():
         "--collect-all=ultralytics.nn",
         "--collect-all=ultralytics.utils",
         # Main script
-        script_path
+        script_path,
     ]
 
     print("Running PyInstaller...")
     print(" ".join(args))
-    
+
     result = subprocess.run(args)
-    
+
     if result.returncode == 0:
         print("\nBuild successful!")
         print(f"Executable is located in: dist\\{app_name}\\{app_name}.exe")
     else:
         print("\nBuild failed!")
+
 
 if __name__ == "__main__":
     build_exe()

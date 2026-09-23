@@ -1,16 +1,11 @@
 # [注] 需要保存文件的示例程序在部分环境下需以管理员权限执行，否则会有异常
 # [PS] Sample programs that need to save files need to be executed with administrator privileges \
 #      in some environments, otherwise there will be exceptions
-     
 
+
+import inspect
 import sys
 import threading
-import msvcrt
-import numpy as np
-import inspect
-import csv
-import codecs
-
 from ctypes import *
 
 sys.path.append("../MvImport")
@@ -18,43 +13,44 @@ from MVFGControl_class import *
 from PyQt5.QtWidgets import *
 from PyUIBasicDemo import Ui_Form
 
-
 hThreadHandle = None
-nFrameNum = 0                          #存图id
-Buf_Lock = threading.Lock()            #取图和存图的锁
+nFrameNum = 0  # 存图id
+Buf_Lock = threading.Lock()  # 取图和存图的锁
 stImageInfo = MV_FG_INPUT_IMAGE_INFO()
 Save_Image_Buf = None
 Save_Image_Buf_Size = c_uint(0)
 
-TIMEOUT         = 1000
-nInterfaceNum   = c_uint(0)
-IsOpenIF        = False
-IsOpenDevice    = False
+TIMEOUT = 1000
+nInterfaceNum = c_uint(0)
+IsOpenIF = False
+IsOpenDevice = False
 IsStartGrabbing = False
-nTriggerMode    = c_uint(0)
+nTriggerMode = c_uint(0)
 TRIGGER_MODE_ON = c_uint(1)
 TRIGGER_MODE_OFF = c_uint(0)
 
-TRIGGER_SOURCE_LINE0 = c_uint(0)                     # ch:Line0 | en:Line0
-TRIGGER_SOURCE_LINE1 = c_uint(1)                     # ch:Line1 | en:Line1
-TRIGGER_SOURCE_LINE2 = c_uint(2)                     # ch:Line2 | en:Line2
-TRIGGER_SOURCE_LINE3 = c_uint(3)                     # ch:Line3 | en:Line3
-TRIGGER_SOURCE_COUNTER0 = c_uint(4)                  # ch:Conuter0 | en:Conuter0
-TRIGGER_SOURCE_SOFTWARE = c_uint(7)                  # ch:软触发 | en:Software
-TRIGGER_SOURCE_FrequencyConverter = c_uint(8)        # ch:变频器 | en:Frequency Converter
+TRIGGER_SOURCE_LINE0 = c_uint(0)  # ch:Line0 | en:Line0
+TRIGGER_SOURCE_LINE1 = c_uint(1)  # ch:Line1 | en:Line1
+TRIGGER_SOURCE_LINE2 = c_uint(2)  # ch:Line2 | en:Line2
+TRIGGER_SOURCE_LINE3 = c_uint(3)  # ch:Line3 | en:Line3
+TRIGGER_SOURCE_COUNTER0 = c_uint(4)  # ch:Conuter0 | en:Conuter0
+TRIGGER_SOURCE_SOFTWARE = c_uint(7)  # ch:软触发 | en:Software
+TRIGGER_SOURCE_FrequencyConverter = c_uint(8)  # ch:变频器 | en:Frequency Converter
+
 
 # 将返回的错误码转换为十六进制显示
 def ToHexStr(num):
-    chaDic = {10: 'a', 11: 'b', 12: 'c', 13: 'd', 14: 'e', 15: 'f'}
+    chaDic = {10: "a", 11: "b", 12: "c", 13: "d", 14: "e", 15: "f"}
     hexStr = ""
     if num < 0:
-        num = num + 2 ** 32
+        num = num + 2**32
     while num >= 16:
         digit = num % 16
         hexStr = chaDic.get(digit, str(digit)) + hexStr
         num //= 16
     hexStr = chaDic.get(num, str(num)) + hexStr
     return hexStr
+
 
 # 强制关闭线程
 def Async_raise(tid, exctype):
@@ -68,9 +64,11 @@ def Async_raise(tid, exctype):
         ctypes.pythonapi.PyThreadState_SetAsyncExc(tid, None)
         raise SystemError("PyThreadState_SetAsyncExc failed")
 
+
 # 停止线程
 def Stop_thread(thread):
     Async_raise(thread.ident, SystemExit)
+
 
 def EnabelControls(IsCameraReady):
     ui.BtnEnumInterface.setEnabled(not IsOpenIF)
@@ -89,7 +87,9 @@ def EnabelControls(IsCameraReady):
     ui.RadioContinuousMode.setEnabled(IsOpenDevice)
     ui.RadioTriggerMode.setEnabled(IsOpenDevice)
     ui.CheckTriggerbySoftware.setEnabled(IsOpenDevice)
-    ui.BtnTriggerOnce.setEnabled(IsStartGrabbing and ui.CheckTriggerbySoftware.isChecked() and ui.RadioTriggerMode.isChecked())
+    ui.BtnTriggerOnce.setEnabled(
+        IsStartGrabbing and ui.CheckTriggerbySoftware.isChecked() and ui.RadioTriggerMode.isChecked()
+    )
 
     ui.BtnSaveBMP.setEnabled(IsStartGrabbing)
     ui.BtnSaveJPEG.setEnabled(IsStartGrabbing)
@@ -98,18 +98,18 @@ def EnabelControls(IsCameraReady):
 
 
 # ch:取流线程 | en:Grabbing image data thread
-def GrabbingThread(Stream = 0, winHandle = 0):
+def GrabbingThread(Stream=0, winHandle=0):
     global hThreadHandle
     global Save_Image_Buf
     global Save_Image_Buf_Size
-    stFrameInfo   = MV_FG_BUFFER_INFO()
+    stFrameInfo = MV_FG_BUFFER_INFO()
     stDisplayInfo = MV_FG_DISPLAY_FRAME_INFO()
     memset(byref(stFrameInfo), 0, sizeof(stFrameInfo))
     ret = MV_FG_SUCCESS
     while True:
         ret = Stream.GetFrameBuffer(stFrameInfo, TIMEOUT)
-        if MV_FG_SUCCESS != ret :
-            if nTriggerMode is TRIGGER_MODE_OFF :
+        if MV_FG_SUCCESS != ret:
+            if nTriggerMode is TRIGGER_MODE_OFF:
                 strError = "Get Frame Buffer Failed! ret:" + ToHexStr(ret)
                 print(strError)
             continue
@@ -123,17 +123,21 @@ def GrabbingThread(Stream = 0, winHandle = 0):
                 Save_Image_Buf = (c_ubyte * stFrameInfo.nFilledSize)()
                 Save_Image_Buf_Size = stFrameInfo.nFilledSize
             memset(byref(Save_Image_Buf), 0, Save_Image_Buf_Size)
-            cdll.msvcrt.memcpy(byref(Save_Image_Buf), cast(stFrameInfo.pBuffer, POINTER(c_ubyte * stFrameInfo.nFilledSize)), stFrameInfo.nFilledSize)
+            cdll.msvcrt.memcpy(
+                byref(Save_Image_Buf),
+                cast(stFrameInfo.pBuffer, POINTER(c_ubyte * stFrameInfo.nFilledSize)),
+                stFrameInfo.nFilledSize,
+            )
             stImageInfo.nWidth = stFrameInfo.nWidth
             stImageInfo.nHeight = stFrameInfo.nHeight
             stImageInfo.enPixelType = stFrameInfo.enPixelType
             stImageInfo.pImageBuf = cast(stFrameInfo.pBuffer, POINTER(c_ubyte))
             stImageInfo.nImageBufLen = stFrameInfo.nFilledSize
-            global  nFrameNum
+            global nFrameNum
             nFrameNum = stFrameInfo.nFrameID
             Buf_Lock.release()
 
-            #显示图像
+            # 显示图像
             memset(byref(stDisplayInfo), 0, sizeof(stDisplayInfo))
             stDisplayInfo.nWidth = stFrameInfo.nWidth
             stDisplayInfo.nHeight = stFrameInfo.nHeight
@@ -158,10 +162,13 @@ def GrabbingThread(Stream = 0, winHandle = 0):
 
     return ret
 
+
 # ch:枚举采集卡 | en:Enum interface
 def EnumInterface():
     bChanged = c_bool(False)
-    ret = FGSystem.UpdateInterfaceList(MV_FG_CXP_INTERFACE | MV_FG_GEV_INTERFACE | MV_FG_CAMERALINK_INTERFACE | MV_FG_XoF_INTERFACE, bChanged)
+    ret = FGSystem.UpdateInterfaceList(
+        MV_FG_CXP_INTERFACE | MV_FG_GEV_INTERFACE | MV_FG_CAMERALINK_INTERFACE | MV_FG_XoF_INTERFACE, bChanged
+    )
     if MV_FG_SUCCESS != ret:
         strError = "Enum Interfaces Failed! ret:" + ToHexStr(ret)
         QMessageBox.warning(mainWindow, "Error", strError, QMessageBox.Ok)
@@ -180,7 +187,7 @@ def EnumInterface():
 
     if True == bChanged.value:
         ui.ComboInterface.clear()
-        for i in range(0, nInterfaceNum.value):
+        for i in range(nInterfaceNum.value):
             stInterfaceInfo = MV_FG_INTERFACE_INFO()
             memset(byref(stInterfaceInfo), 0, sizeof(stInterfaceInfo))
             ret = FGSystem.GetInterfaceInfo(i, stInterfaceInfo)
@@ -224,7 +231,7 @@ def EnumInterface():
                 for per in stInterfaceInfo.IfaceInfo.stCMLIfaceInfo.chSerialNumber:
                     chSerialNumber = chSerialNumber + chr(per)
                 strIFInfo = "CML[" + str(i) + "]" + chDisplayName + "|" + chInterfaceID + "|" + chSerialNumber
-                
+
             elif MV_FG_XoF_INTERFACE == stInterfaceInfo.nTLayerType:
                 chDisplayName = ""
                 for per in stInterfaceInfo.IfaceInfo.stXoFIfaceInfo.chDisplayName:
@@ -261,6 +268,7 @@ def OpenInterface():
     IsOpenIF = True
     EnabelControls(False)
 
+
 # ch；关闭采集卡 | en:Close interface
 def CloseInterface():
     global IsOpenIF
@@ -275,9 +283,10 @@ def CloseInterface():
 
     EnabelControls(False)
 
+
 # ch:枚举设备 | en:Enum device
 def EnumDevice():
-    bChanged   = c_bool(False)
+    bChanged = c_bool(False)
     nDeviceNum = c_uint(0)
 
     ret = Iface.UpdateDeviceList(bChanged)
@@ -296,7 +305,7 @@ def EnumDevice():
         return
     if True == bChanged.value:
         ui.ComboDevice.clear()
-        for i in range(0, nDeviceNum.value  ):
+        for i in range(nDeviceNum.value):
             stDeviceInfo = MV_FG_DEVICE_INFO()
             memset(byref(stDeviceInfo), 0, sizeof(stDeviceInfo))
             ret = Iface.GetDeviceInfo(i, stDeviceInfo)
@@ -340,7 +349,7 @@ def EnumDevice():
                 for per in stDeviceInfo.DevInfo.stCMLDevInfo.chSerialNumber:
                     chSerialNumber = chSerialNumber + chr(per)
                 strDevInfo = "CML[" + str(i) + "]" + chUserDefinedName + "|" + chModelName + "|" + chSerialNumber
-                
+
             elif MV_FG_XoF_DEVICE == stDeviceInfo.nDevType:
                 chUserDefinedName = ""
                 for per in stDeviceInfo.DevInfo.stXoFDevInfo.chUserDefinedName:
@@ -359,6 +368,7 @@ def EnumDevice():
         ui.ComboDevice.setCurrentIndex(0)
 
     EnabelControls(True)
+
 
 # ch:打开设备 | en:Open device
 def OpenDevice():
@@ -391,6 +401,7 @@ def OpenDevice():
 
     EnabelControls(True)
 
+
 # ch:关闭设备 | en:Close device
 def CloseDevice():
     global IsOpenDevice
@@ -422,6 +433,7 @@ def GetTriggerMode():
 
     return MV_FG_SUCCESS
 
+
 # ch:获取触发源 | en:Get trigger source
 def GetTriggerSource():
     stEnumValue = MV_FG_ENUMVALUE()
@@ -430,14 +442,16 @@ def GetTriggerSource():
     if MV_FG_SUCCESS == ret:
         return ret
     if TRIGGER_SOURCE_SOFTWARE != stEnumValue.nCurValue:
-       ui.CheckTriggerbySoftware.setChecked(True)
+        ui.CheckTriggerbySoftware.setChecked(True)
     else:
-       ui.CheckTriggerbySoftware.setChecked(False)
+        ui.CheckTriggerbySoftware.setChecked(False)
     return ret
 
+
 # ch:设置触发模式 | en:Set trigger mode
-def SetTriggerMode(nTriggerMode = 0):
+def SetTriggerMode(nTriggerMode=0):
     return DevGeneral.SetEnumValue("TriggerMode", nTriggerMode)
+
 
 # ch:设置触发源 | en:Set trigger source
 def SetTriggerSource():
@@ -481,6 +495,7 @@ def StartTriggerMode():
         ui.RadioTriggerMode.setAutoExclusive(False)
         ui.RadioTriggerMode.setChecked(False)
         return
+
 
 # ch:软触发 | en:Software trigger
 def SoftwareTrigger():
@@ -539,6 +554,7 @@ def StartGrabbing():
 
     EnabelControls(True)
 
+
 # ch:停止采集 | en:Stop grabbing
 def StopGrabbing():
     global IsStartGrabbing
@@ -546,7 +562,7 @@ def StopGrabbing():
     if False == IsOpenDevice or False == IsStartGrabbing:
         return
     IsStartGrabbing = False
-    #hThreadHandle.join()
+    # hThreadHandle.join()
     Stop_thread(hThreadHandle)
 
     ret = Stream.StopAcquisition()
@@ -586,7 +602,7 @@ def SaveBmp():
         ret = ImgProc.SaveBitmap(stBmpInfo)
         if MV_FG_SUCCESS != ret:
             break
-        file = open(file_path.encode('ascii'), 'wb+')
+        file = open(file_path.encode("ascii"), "wb+")
         img_data = (c_ubyte * stBmpInfo.nBmpBufLen)()
         cdll.msvcrt.memcpy(byref(img_data), stBmpInfo.pBmpBuf, stBmpInfo.nBmpBufLen)
         file.write(img_data)
@@ -599,6 +615,7 @@ def SaveBmp():
         QMessageBox.warning(mainWindow, "Error", strError, QMessageBox.Ok)
         return
     QMessageBox.warning(mainWindow, "PROMPT", "Save Bmp Succeed!", QMessageBox.Ok)
+
 
 # ch:保存JPEG图像 | en:Save JPEG
 def SaveJpeg():
@@ -617,14 +634,14 @@ def SaveJpeg():
         stJpegInfo.stInputImageInfo = stImageInfo
         stJpegInfo.pJpgBuf = JpegBuffer
         stJpegInfo.nJpgBufSize = JpegBufferSize
-        stJpegInfo.nJpgQuality = 60                              # JPG编码质量(0 - 100]
+        stJpegInfo.nJpgQuality = 60  # JPG编码质量(0 - 100]
         stJpegInfo.enCfaMethod = MV_FG_CFA_METHOD_OPTIMAL
 
         ret = ImgProc.SaveJpeg(stJpegInfo)
         if MV_FG_SUCCESS != ret:
             break
-        file = open(file_path.encode('ascii'), 'wb+')
-        img_data = (c_ubyte*stJpegInfo.nJpgBufLen)()
+        file = open(file_path.encode("ascii"), "wb+")
+        img_data = (c_ubyte * stJpegInfo.nJpgBufLen)()
         cdll.msvcrt.memcpy(byref(img_data), stJpegInfo.pJpgBuf, stJpegInfo.nJpgBufLen)
         file.write(img_data)
         file.close()
@@ -637,6 +654,7 @@ def SaveJpeg():
         return
     QMessageBox.warning(mainWindow, "PROMPT", "Save Jpeg Succeed!", QMessageBox.Ok)
 
+
 # ch:保存TIFF图像 | en:Save TIFF
 def SaveTiff():
     if 0 == Save_Image_Buf:
@@ -647,7 +665,7 @@ def SaveTiff():
     stTiffInfo = MV_FG_SAVE_TIFF_TO_FILE_INFO()
     memset(byref(stTiffInfo), 0, sizeof(MV_FG_SAVE_TIFF_TO_FILE_INFO))
     ImagePath = (c_ubyte * 256)()
-    cdll.msvcrt.memcpy(byref(ImagePath), file_path.encode('ascii'), 256)
+    cdll.msvcrt.memcpy(byref(ImagePath), file_path.encode("ascii"), 256)
 
     stTiffInfo.stInputImageInfo = stImageInfo
     stTiffInfo.fXResolution = stImageInfo.nWidth
@@ -665,6 +683,7 @@ def SaveTiff():
         return
     QMessageBox.warning(mainWindow, "PROMPT", "Save Tiff Succeed!", QMessageBox.Ok)
 
+
 # ch:保存PNG图像 | en:Save PNG
 def SavePng():
 
@@ -676,7 +695,7 @@ def SavePng():
     stPngInfo = MV_FG_SAVE_PNG_TO_FILE_INFO()
     memset(byref(stPngInfo), 0, sizeof(MV_FG_SAVE_PNG_TO_FILE_INFO))
     ImagePath = (c_ubyte * 256)()
-    cdll.msvcrt.memcpy(byref(ImagePath), file_path.encode('ascii'), 256)
+    cdll.msvcrt.memcpy(byref(ImagePath), file_path.encode("ascii"), 256)
 
     stPngInfo.stInputImageInfo = stImageInfo
     stPngInfo.nPngCompression = 6
@@ -693,7 +712,7 @@ def SavePng():
     QMessageBox.warning(mainWindow, "PROMPT", "Save Png Succeed!", QMessageBox.Ok)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     Iface = FGInterface()
     Dev = FGDevice()
     Stream = FGStream()
@@ -730,5 +749,3 @@ if __name__ == '__main__':
         CloseInterface()
 
     sys.exit()
-
-
