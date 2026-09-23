@@ -1,8 +1,8 @@
 # Config for ade20k, M2F inference
 
-metric_to_save: 'mIoU'
+metric_to_save: "mIoU"
 datasets:
-  root: ""  # Path to the ADE20K dataset
+  root: "" # Path to the ADE20K dataset
   val: "ADE20K:split=VAL"
 decoder_head:
   type: "m2f"

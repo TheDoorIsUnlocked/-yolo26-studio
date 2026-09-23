@@ -3,18 +3,19 @@
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
 
+from __future__ import annotations
+
 import os
 from typing import Callable
 
 import matplotlib
 import numpy as np
 import torch
-import torchvision.transforms as transforms
 from PIL import Image
-
-from dinov3.eval.depth.config import ResultConfig, ResultExtension
+from torchvision import transforms
 
 from dinov3.data.transforms import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+from dinov3.eval.depth.config import ResultConfig, ResultExtension
 
 
 def alpha_blend(img_pil: Image.Image, mask_rgb: np.ndarray, alpha: float = 0.5) -> Image.Image:
@@ -30,9 +31,7 @@ def normalized_tensor_to_pil(
     mean=IMAGENET_DEFAULT_MEAN,
     std=IMAGENET_DEFAULT_STD,
 ) -> Image.Image:
-    """
-    Transforms a normalized image tensor back into PIL image.
-    """
+    """Transforms a normalized image tensor back into PIL image."""
     assert tensor.ndim == 3 and tensor.shape[0] == 3, f"input should be 3xHxW, got {tensor.shape}"
     std = torch.tensor(std, device=tensor.device)[:, None, None]
     mean = torch.tensor(mean, device=tensor.device)[:, None, None]
