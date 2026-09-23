@@ -3,18 +3,20 @@
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
 
+from __future__ import annotations
+
 import gc
 import logging
 import os
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 import torch
 from torch import nn
 from torchmetrics import Metric
 
-import dinov3.distributed as distributed
+from dinov3 import distributed
 from dinov3.data import DatasetWithEnumeratedTargets, SamplerType, make_data_loader
 from dinov3.eval.accumulators import NoOpAccumulator, ResultsAccumulator
 from dinov3.logging import MetricLogger
@@ -86,14 +88,10 @@ class ModelWithIntermediateLayers(nn.Module):
         self.return_class_token = return_class_token
 
     def forward(self, images):
-        with torch.inference_mode():
-            with self.autocast_ctx():
-                features = self.feature_model.get_intermediate_layers(
-                    images,
-                    n=self.n,
-                    reshape=self.reshape,
-                    return_class_token=self.return_class_token
-                )
+        with torch.inference_mode(), self.autocast_ctx():
+            features = self.feature_model.get_intermediate_layers(
+                images, n=self.n, reshape=self.reshape, return_class_token=self.return_class_token
+            )
         return features
 
 
@@ -101,10 +99,10 @@ class ModelWithIntermediateLayers(nn.Module):
 def evaluate(
     model: nn.Module,
     data_loader,
-    postprocessors: Dict[str, nn.Module],
-    metrics: Dict[str, Metric],
+    postprocessors: dict[str, nn.Module],
+    metrics: dict[str, Metric],
     device: torch.device,
-    criterion: Optional[nn.Module] = None,
+    criterion: nn.Module | None = None,
     accumulate_results: bool = False,
 ):
     gc.collect()  # Avoids garbage collection errors in DataLoader workers
@@ -119,7 +117,7 @@ def evaluate(
     header = "Test:"
 
     accumulator_class = ResultsAccumulator if accumulate_results else NoOpAccumulator
-    accumulators = {k: accumulator_class() for k in postprocessors.keys()}
+    accumulators = {k: accumulator_class() for k in postprocessors}
 
     # Dataset needs to be wrapped in fairvit.data.adapters.DatasetWithEnumeratedTargets
     for samples, (index, targets), *_ in metric_logger.log_every(data_loader, 10, header):
@@ -212,7 +210,7 @@ def extract_features_with_dataloader(model, data_loader, sample_count, gather_on
     return features, all_labels
 
 
-def save_features_dict(features_dict: Dict[str, torch.Tensor], path: str) -> None:
+def save_features_dict(features_dict: dict[str, torch.Tensor], path: str) -> None:
     logger.info(f'saving features to "{path}"')
 
     for key, value in features_dict.items():
@@ -231,7 +229,7 @@ def save_features_dict(features_dict: Dict[str, torch.Tensor], path: str) -> Non
         raise ValueError(f'Unsupported features dict extension "{ext}"')
 
 
-def load_features_dict(path: str) -> Dict[str, torch.Tensor]:
+def load_features_dict(path: str) -> dict[str, torch.Tensor]:
     logger.info(f'loading features from "{path}"')
 
     _, ext = os.path.splitext(path)
@@ -250,14 +248,14 @@ def load_features_dict(path: str) -> Dict[str, torch.Tensor]:
     return features_dict
 
 
-def average_metrics(eval_metrics_dict: dict[Any, dict[str, torch.Tensor]], ignore_keys: List[str] = []):
+def average_metrics(eval_metrics_dict: dict[Any, dict[str, torch.Tensor]], ignore_keys: list[str] | None = None):
+    """Function that computes the average and the std on a metrics dict. A linear evaluation dictionary contains
+    "best_classifier", so this specific key is removed for computing aggregated metrics.
     """
-    Function that computes the average and the std on a metrics dict.
-    A linear evaluation dictionary contains "best_classifier",
-    so this specific key is removed for computing aggregated metrics.
-    """
+    if ignore_keys is None:
+        ignore_keys = []
     output_metrics_dict = {}
-    metrics = [metric for metric in eval_metrics_dict[0].keys() if metric not in ignore_keys]
+    metrics = [metric for metric in eval_metrics_dict[0] if metric not in ignore_keys]
     for metric in metrics:
         stats_tensor = torch.tensor([stat[metric] for stat in eval_metrics_dict.values()])
         output_metrics_dict[metric + "_mean"] = stats_tensor.mean().item()
@@ -270,11 +268,9 @@ def save_results(
     preds: torch.Tensor,
     target: torch.Tensor,
     output_dir: str,
-    filename_suffix: Optional[str] = None,
+    filename_suffix: str | None = None,
 ) -> None:
-    """
-    Helper to save predictions from a model and their associated targets, aligned by their index
-    """
+    """Helper to save predictions from a model and their associated targets, aligned by their index."""
     filename_suffix = "" if filename_suffix is None else f"_{filename_suffix}"
     preds_filename = f"preds{filename_suffix}.npy"
     target_filename = f"target{filename_suffix}.npy"
