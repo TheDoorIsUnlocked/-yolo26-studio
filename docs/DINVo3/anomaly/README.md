@@ -19,6 +19,7 @@ out/records/<产品名>/capture/cam1/   # 相机2
 ```
 
 **关键要求**(直接影响建库质量):
+
 - 只存良品画面;
 - 采集期间固定曝光/增益/光照/产品位置,与之后生产检测时保持一致;
 - 目标 200~500 张/产品/相机;成像条件改了就要重建库。
@@ -34,10 +35,11 @@ YOLO26 Studio → 侧边导航"异常检测" → 左侧"建库(良品特征库)"
 5. 点"开始建库",进度在下方 System log。
 
 等价命令行:
+
 ```bash
 ~/miniconda3/envs/yolo26/bin/python anomaly/build_bank.py \
-    --good-dir out/records/<产品名>/capture/cam0 \
-    --out models/anomaly_bank.npz
+  --good-dir out/records/ \
+  --out models/anomaly_bank.npz < 产品名 > /capture/cam0
 ```
 
 ## 第三步:离线验证
@@ -45,6 +47,7 @@ YOLO26 Studio → 侧边导航"异常检测" → 左侧"建库(良品特征库)"
 右侧"离线验证":特征库文件 + 良品验证目录 + 缺陷目录 → "开始验证"。
 
 结果解读(同时写入输出目录):
+
 - **AUROC**:越接近 1.0 越好;0.95+ 说明方法对这类缺陷有效;
 - **建议阈值**:Youden 最优(漏检/误报综合最平衡),生产上建议直接用
   **零误报阈值**(良品最高分×1.05)起步,宁可漏检先不误杀;
@@ -52,10 +55,11 @@ YOLO26 Studio → 侧边导航"异常检测" → 左侧"建库(良品特征库)"
 - scores.csv:每张图分数,人工核对。
 
 等价命令行:
+
 ```bash
 ~/miniconda3/envs/yolo26/bin/python anomaly/validate.py \
-    --bank models/anomaly_bank.npz \
-    --good-dir 良品验证目录 --ng-dir 缺陷照片目录 --out out/anomaly
+  --bank models/anomaly_bank.npz \
+  --good-dir 良品验证目录 --ng-dir 缺陷照片目录 --out out/anomaly
 ```
 
 ## 注意事项

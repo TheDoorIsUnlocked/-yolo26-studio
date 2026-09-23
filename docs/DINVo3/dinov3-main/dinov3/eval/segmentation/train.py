@@ -3,17 +3,17 @@
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
 
-from functools import partial
 import logging
-import numpy as np
 import os
 import random
+from functools import partial
 
+import numpy as np
 import torch
 import torch.distributed as dist
 
+from dinov3 import distributed
 from dinov3.data import DatasetWithEnumeratedTargets, SamplerType, make_data_loader, make_dataset
-import dinov3.distributed as distributed
 from dinov3.eval.segmentation.eval import evaluate_segmentation_model
 from dinov3.eval.segmentation.loss import MultiSegmentationLoss
 from dinov3.eval.segmentation.metrics import SEGMENTATION_METRICS
@@ -50,8 +50,8 @@ class InfiniteDataloader:
 
 
 def worker_init_fn(worker_id, num_workers, rank, seed):
-    """Worker init func for dataloader.
-    The seed of each worker equals to num_worker * rank + worker_id + user_seed
+    """Worker init func for dataloader. The seed of each worker equals to num_worker * rank + worker_id + user_seed.
+
     Args:
         worker_id (int): Worker id.
         num_workers (int): Number of workers.
@@ -116,7 +116,7 @@ def train_step(
     optimizer.zero_grad(set_to_none=True)
 
     # b) forward pass
-    with torch.autocast("cuda", dtype=model_dtype, enabled=True if model_dtype is not None else False):
+    with torch.autocast("cuda", dtype=model_dtype, enabled=model_dtype is not None):
         pred = segmentation_model(batch_img)  # B x num_classes x h x w
         gt = torch.squeeze(gt).long()  # Adapt gt dimension to enable loss calculation
 

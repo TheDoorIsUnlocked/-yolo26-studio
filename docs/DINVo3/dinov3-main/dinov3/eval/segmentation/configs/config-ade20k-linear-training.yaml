@@ -2,27 +2,27 @@
 
 bs: 2
 n_gpus: 8
-metric_to_save: 'mIoU'
+metric_to_save: "mIoU"
 model_dtype: FLOAT32
 scheduler:
   total_iter: 40000
-  type: 'WarmupOneCycleLR'
+  type: "WarmupOneCycleLR"
   constructor_kwargs:
     warmup_iters: 1500
     warmup_ratio: 1e-6
     final_div_factor: .inf
     pct_start: 0
-    anneal_strategy: 'cos'
+    anneal_strategy: "cos"
     use_beta1: False
     update_momentum: False
 optimizer:
-  lr : 1e-3
+  lr: 1e-3
   beta1: 0.9
   beta2: 0.999
   weight_decay: 1e-3
-  gradient_clip: 'inf'
+  gradient_clip: "inf"
 datasets:
-  root: ""  # Path to the ADE20K dataset
+  root: "" # Path to the ADE20K dataset
   train: "ADE20K:split=TRAIN"
   val: "ADE20K:split=VAL"
 train:
