@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-"""RF-DETR 预训练权重多线程下载器（支持断点续传）。
+r"""RF-DETR 预训练权重多线程下载器（支持断点续传）。.
 
 背景：
   RF-DETR 首次训练会自动下载预训练权重，默认落在
@@ -26,32 +25,37 @@
     set RF_HOME=<缓存目录>          (CMD)
     $env:RF_HOME = "<缓存目录>"      (PowerShell)
 """
+
 import os
 import sys
-import time
 import threading
+import time
 
 import requests
 
 # URL 与文件名取自 rfdetr 官方 rfdetr/assets/model_weights.py，
 # 与 UI「RF-DETR」页开放的 5 个变体一一对应（Nano/Small/Medium/Base/Large）。
 URLS = {
-    "nano":   "https://storage.googleapis.com/rfdetr/nano_coco/checkpoint_best_regular.pth",
-    "small":  "https://storage.googleapis.com/rfdetr/small_coco/checkpoint_best_regular.pth",
+    "nano": "https://storage.googleapis.com/rfdetr/nano_coco/checkpoint_best_regular.pth",
+    "small": "https://storage.googleapis.com/rfdetr/small_coco/checkpoint_best_regular.pth",
     "medium": "https://storage.googleapis.com/rfdetr/medium_coco/checkpoint_best_regular.pth",
-    "base":   "https://storage.googleapis.com/rfdetr/rf-detr-base.pth",
-    "large":  "https://storage.googleapis.com/rfdetr/rf-detr-large.pth",
+    "base": "https://storage.googleapis.com/rfdetr/rf-detr-base.pth",
+    "large": "https://storage.googleapis.com/rfdetr/rf-detr-large.pth",
 }
 FILENAMES = {
-    "nano":   "rf-detr-nano.pth",
-    "small":  "rf-detr-small.pth",
+    "nano": "rf-detr-nano.pth",
+    "small": "rf-detr-small.pth",
     "medium": "rf-detr-medium.pth",
-    "base":   "rf-detr-base.pth",
-    "large":  "rf-detr-large.pth",
+    "base": "rf-detr-base.pth",
+    "large": "rf-detr-large.pth",
 }
 # 官方权重体积（MB），仅用于下载前的体积提示
 SIZES_MB = {
-    "nano": 349, "small": 408, "medium": 776, "base": 950, "large": 1100,
+    "nano": 349,
+    "small": 408,
+    "medium": 776,
+    "base": 950,
+    "large": 1100,
 }
 N_THREADS = 8
 CHUNK = 1024 * 512
@@ -62,8 +66,9 @@ DEFAULT_CACHE = os.path.join(HERE, ".rfdetr_models")
 
 
 def md5_of(path):
-    """计算文件 MD5（分块读取，避免大文件占内存）。"""
+    """计算文件 MD5（分块读取，避免大文件占内存）。."""
     import hashlib
+
     h = hashlib.md5()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
@@ -72,12 +77,13 @@ def md5_of(path):
 
 
 def expected_md5(variant):
-    """从已安装的 rfdetr 里取官方 MD5；取不到返回 None。
+    """从已安装的 rfdetr 里取官方 MD5；取不到返回 None。.
 
     不硬编码 MD5 —— 权重更新时硬编码值会过期，导致误判。
     """
     try:
         from rfdetr.assets.model_weights import ModelWeights
+
         fn = FILENAMES[variant]
         for m in ModelWeights:
             if m.value.filename == fn:
@@ -88,15 +94,12 @@ def expected_md5(variant):
 
 
 def probe_size(url):
-    """探测远端文件大小，同时确认链接可访问。
+    """探测远端文件大小，同时确认链接可访问。.
 
-    用 Range 请求而不是 HEAD：实测 HEAD 对已失效的链接会返回
-    Content-Length: 0（而不是 403），容易误判成「0 字节文件」。
-    返回 (是否可下载, 字节数)。
+    用 Range 请求而不是 HEAD：实测 HEAD 对已失效的链接会返回 Content-Length: 0（而不是 403），容易误判成「0 字节文件」。 返回 (是否可下载, 字节数)。
     """
     try:
-        r = requests.get(url, headers={"Range": "bytes=0-0"},
-                         timeout=30, stream=True)
+        r = requests.get(url, headers={"Range": "bytes=0-0"}, timeout=30, stream=True)
         if r.status_code not in (200, 206):
             return False, 0
         cr = r.headers.get("Content-Range") or ""
@@ -154,10 +157,7 @@ def _download(url, dest, nthreads=N_THREADS):
             errors.append("分片 %d 失败: %s" % (idx, e))
 
     t0 = time.time()
-    threads = [
-        threading.Thread(target=worker, args=(i, s, e), daemon=True)
-        for i, (s, e) in enumerate(ranges)
-    ]
+    threads = [threading.Thread(target=worker, args=(i, s, e), daemon=True) for i, (s, e) in enumerate(ranges)]
     for t in threads:
         t.start()
 
@@ -169,8 +169,7 @@ def _download(url, dest, nthreads=N_THREADS):
         pct = d / total * 100
         eta = (total - d) / (d / el) if d > 0 else 0
         sys.stdout.write(
-            "\r  %.1f%% | %.1f/%.1f MB | %.2f MB/s | 剩余 %.0fs   "
-            % (pct, d / 1048576, total / 1048576, spd, eta)
+            f"\r  {pct:.1f}% | {d / 1048576:.1f}/{total / 1048576:.1f} MB | {spd:.2f} MB/s | 剩余 {eta:.0f}s   "
         )
         sys.stdout.flush()
 
@@ -178,7 +177,7 @@ def _download(url, dest, nthreads=N_THREADS):
         t.join()
 
     el = time.time() - t0
-    print("\n\n下载耗时 %.1fs，平均 %.2f MB/s" % (el, total / 1048576 / el))
+    print(f"\n\n下载耗时 {el:.1f}s，平均 {total / 1048576 / el:.2f} MB/s")
     if errors:
         print("!! 有分片出错（重跑本脚本可续传）:")
         for e in errors[:5]:
@@ -195,18 +194,18 @@ def _download(url, dest, nthreads=N_THREADS):
     expected = expected_md5(variant)
     if expected is None:
         print("!! 无法获取官方 MD5，仅校验大小（不保证内容正确）")
-        print("   大小校验通过: %s (%.1f MB)" % (dest, size / 1048576))
+        print(f"   大小校验通过: {dest} ({size / 1048576:.1f} MB)")
         return True
 
     print("校验 MD5（可能需要十几秒）...")
     got = md5_of(dest)
     if got != expected:
         print("!! MD5 不一致！文件已损坏：")
-        print("   期望: %s" % expected)
-        print("   实际: %s" % got)
-        print("   请删除后重跑本脚本：del \"%s\"" % dest)
+        print(f"   期望: {expected}")
+        print(f"   实际: {got}")
+        print(f'   请删除后重跑本脚本：del "{dest}"')
         return False
-    print("MD5 校验通过: %s (%.1f MB)" % (dest, size / 1048576))
+    print(f"MD5 校验通过: {dest} ({size / 1048576:.1f} MB)")
     return True
 
 
@@ -250,7 +249,7 @@ def main():
     ok = _download(URLS[variant], dest)
     if ok:
         print("\n完成。程序会自动从该目录加载；命令行单独使用时请先设置：")
-        print("    set RF_HOME=%s" % cache)
+        print(f"    set RF_HOME={cache}")
     return 0 if ok else 1
 
 

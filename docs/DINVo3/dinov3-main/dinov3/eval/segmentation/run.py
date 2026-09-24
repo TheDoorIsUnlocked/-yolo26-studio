@@ -3,19 +3,21 @@
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
 
+from __future__ import annotations
+
 import logging
-from omegaconf import OmegaConf
 import os
 import sys
 from typing import Any
 
+from omegaconf import OmegaConf
+
+from dinov3.eval.helpers import args_dict_to_dataclass, cli_parser, write_results
 from dinov3.eval.segmentation.config import SegmentationConfig
 from dinov3.eval.segmentation.eval import test_segmentation
 from dinov3.eval.segmentation.train import train_segmentation
-from dinov3.eval.helpers import args_dict_to_dataclass, cli_parser, write_results
 from dinov3.eval.setup import load_model_and_context
 from dinov3.run.init import job_context
-
 
 logger = logging.getLogger("dinov3")
 
@@ -35,7 +37,7 @@ def run_segmentation_with_dinov3(
 
 
 def benchmark_launcher(eval_args: dict[str, object]) -> dict[str, Any]:
-    """Initialization of distributed and logging are preconditions for this method"""
+    """Initialization of distributed and logging are preconditions for this method."""
     if "config" in eval_args:  # using a config yaml file, useful for training
         base_config_path = eval_args.pop("config")
         output_dir = eval_args["output_dir"]

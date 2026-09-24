@@ -1,7 +1,6 @@
-
 class Config:
     LANG = "CN"
-    
+
     TRANS = {
         "EN": {
             "title": "YOLO26 AI Vision Studio",
@@ -80,7 +79,6 @@ class Config:
             "ram_usage": "RAM Usage",
             "gpu_usage": "GPU Usage",
             "control_panel": "Control Panel",
-
             # --- Image Augmentation (offline preprocessing before training) ---
             "aug_group": "Image Augmentation",
             "aug_percent": "Image Percentage",
@@ -96,7 +94,6 @@ class Config:
             "aug_contrast": "Contrast Change",
             "aug_saturation": "Saturation Change",
             "aug_rot_range": "Rotation Range",
-
             "rfdetr": "RF-DETR",
             "rfdetr_missing": "RF-DETR not installed (optional). Other features are unaffected.\nInstall: pip install -c constraints-torch.txt -r requirements-rfdetr.txt",
             "rfdetr_train_group": "Train",
@@ -122,7 +119,7 @@ class Config:
             "rfdetr_dynamic_batch": "Dynamic Batch",
             "rfdetr_start_export": "Export ONNX",
             "rfdetr_metric": "Metric",
-            "rfdetr_value": "Value"
+            "rfdetr_value": "Value",
         },
         "CN": {
             "title": "YOLO26 AI视觉",
@@ -201,7 +198,6 @@ class Config:
             "ram_usage": "内存 使用率",
             "gpu_usage": "GPU 使用率",
             "control_panel": "控制面板",
-
             # --- 图像增强 (训练前的离线预处理) ---
             "aug_group": "图像增强 (Augmentation)",
             "aug_percent": "图像百分比",
@@ -217,7 +213,6 @@ class Config:
             "aug_contrast": "对比度变化",
             "aug_saturation": "饱和度变化",
             "aug_rot_range": "旋转范围",
-
             "rfdetr": "RF-DETR",
             "rfdetr_missing": "未安装 RF-DETR（可选功能），其余功能不受影响。\n安装：pip install -c constraints-torch.txt -r requirements-rfdetr.txt",
             "rfdetr_train_group": "训练",
@@ -243,8 +238,8 @@ class Config:
             "rfdetr_dynamic_batch": "动态批次",
             "rfdetr_start_export": "导出 ONNX",
             "rfdetr_metric": "指标",
-            "rfdetr_value": "数值"
-        }
+            "rfdetr_value": "数值",
+        },
     }
 
     @staticmethod
