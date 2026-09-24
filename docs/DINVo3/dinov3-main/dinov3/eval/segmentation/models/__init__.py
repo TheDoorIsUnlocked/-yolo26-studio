@@ -15,9 +15,7 @@ from dinov3.eval.utils import ModelWithIntermediateLayers
 
 
 class BackboneLayersSet(Enum):
-    """
-    Set of intermediate layers to take from the backbone.
-    """
+    """Set of intermediate layers to take from the backbone."""
 
     LAST = "LAST"  # extracting only the last layer
     FOUR_LAST = "FOUR_LAST"  # extracting the four last layers
@@ -28,15 +26,11 @@ def _get_backbone_out_indices(
     model: torch.nn.Module,
     backbone_out_layers: BackboneLayersSet = BackboneLayersSet.FOUR_EVEN_INTERVALS,
 ):
-    """
-    Get indices for output layers of the ViT backbone. For now there are 3 options available:
-    BackboneLayersSet.LAST : only extract the last layer, used in segmentation tasks with a bn head.
-    BackboneLayersSet.FOUR_EVEN_INTERVALS : extract outputs every 1/4 of the total number of blocks
-    Reference outputs in 'FOUR_EVEN_INTERVALS' mode :
-    ViT/S (12 blocks): [2, 5, 8, 11]
-    ViT/B (12 blocks): [2, 5, 8, 11]
-    ViT/L (24 blocks): [5, 11, 17, 23] (classic), [4, 11, 17, 23] (used in the paper)
-    ViT/g (40 blocks): [9, 19, 29, 39]
+    """Get indices for output layers of the ViT backbone. For now there are 3 options available: BackboneLayersSet.LAST
+    : only extract the last layer, used in segmentation tasks with a bn head. BackboneLayersSet.FOUR_EVEN_INTERVALS
+    : extract outputs every 1/4 of the total number of blocks Reference outputs in 'FOUR_EVEN_INTERVALS' mode :
+    ViT/S (12 blocks): [2, 5, 8, 11] ViT/B (12 blocks): [2, 5, 8, 11] ViT/L (24 blocks): [5, 11, 17, 23] (classic),
+    [4, 11, 17, 23] (used in the paper) ViT/g (40 blocks): [9, 19, 29, 39].
     """
     n_blocks = getattr(model, "n_blocks", 1)
     if backbone_out_layers == BackboneLayersSet.LAST:
@@ -49,7 +43,7 @@ def _get_backbone_out_indices(
             out_indices = [4, 11, 17, 23]
         else:
             out_indices = [i * (n_blocks // 4) - 1 for i in range(1, 5)]
-    assert all([out_index < n_blocks for out_index in out_indices])
+    assert all(out_index < n_blocks for out_index in out_indices)
     return out_indices
 
 
@@ -66,10 +60,9 @@ class FeatureDecoder(torch.nn.Module):
         return inputs
 
     def predict(self, inputs, rescale_to=(512, 512)):
-        with torch.inference_mode():
-            with self.autocast_ctx():
-                out = self.segmentation_model[0](inputs)  # backbone forward
-                out = self.segmentation_model[1].predict(out, rescale_to=rescale_to)  # decoder head prediction
+        with torch.inference_mode(), self.autocast_ctx():
+            out = self.segmentation_model[0](inputs)  # backbone forward
+            out = self.segmentation_model[1].predict(out, rescale_to=rescale_to)  # decoder head prediction
         return out
 
 
